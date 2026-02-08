@@ -16,6 +16,8 @@ import { MAIN_AGENT_SYSTEM_PROMPT } from "@/core/agent-prompts";
 import { useTenant } from "@/core/tenant-context";
 import { supabase } from "@/core/supabase";
 
+export const dynamic = 'force-dynamic';
+
 type AgentShowcase = {
   id: string;
   icon: string;

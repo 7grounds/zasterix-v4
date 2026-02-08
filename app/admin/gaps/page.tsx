@@ -11,6 +11,8 @@ import { supabase } from "@/core/supabase";
 import { MAIN_AGENT_SYSTEM_PROMPT } from "@/core/agent-prompts";
 import { useTenant } from "@/core/tenant-context";
 
+export const dynamic = 'force-dynamic';
+
 type GapEntry = {
   query: string;
   count: number;

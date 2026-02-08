@@ -7,6 +7,8 @@
 import { headers } from "next/headers";
 import { VaultDashboard } from "./VaultDashboard";
 
+export const dynamic = 'force-dynamic';
+
 type VaultPageProps = {
   searchParams?: {
     token?: string;

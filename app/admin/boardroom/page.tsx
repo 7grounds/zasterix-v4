@@ -11,6 +11,8 @@ import { supabase } from "@/core/supabase";
 import type { Database } from "@/core/types/database.types";
 import { useTenant } from "@/core/tenant-context";
 
+export const dynamic = 'force-dynamic';
+
 type AgentTemplateRow =
   Database["public"]["Tables"]["agent_templates"]["Row"];
 

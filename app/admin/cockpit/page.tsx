@@ -13,6 +13,8 @@ import { logManagementProtocol } from "@/core/agent-factory";
 import { EXECUTIVE_APPROVAL_TOKEN } from "@/core/governance";
 import { useTenant } from "@/core/tenant-context";
 
+export const dynamic = 'force-dynamic';
+
 type RegistrarLog = Database["public"]["Tables"]["universal_history"]["Row"];
 type BillingLog = Database["public"]["Tables"]["billing_logs"]["Row"];
 

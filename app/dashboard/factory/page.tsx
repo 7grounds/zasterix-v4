@@ -18,6 +18,8 @@ import { EXECUTIVE_APPROVAL_TOKEN } from "@/core/governance";
 import { useTenant } from "@/core/tenant-context";
 import { supabase } from "@/core/supabase";
 
+export const dynamic = 'force-dynamic';
+
 type ChatMessage = {
   role: "system" | "user";
   content: string;

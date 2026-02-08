@@ -24,6 +24,8 @@ import {
 } from "@/core/agent-factory";
 import { DynamicPayloadRenderer } from "@/shared/components/DynamicPayloadRenderer";
 
+export const dynamic = 'force-dynamic';
+
 type UniversalHistoryRow =
   Database["public"]["Tables"]["universal_history"]["Row"];
 

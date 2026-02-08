@@ -12,6 +12,8 @@ import type { Database } from "@/core/types/database.types";
 import { simulateGrowthCost } from "@/core/cost-engine";
 import { useTenant } from "@/core/tenant-context";
 
+export const dynamic = 'force-dynamic';
+
 type BillingLogRow = Database["public"]["Tables"]["billing_logs"]["Row"];
 
 type CostPoint = {
