@@ -29,6 +29,7 @@ const formatTimestamp = (value: string | null) => {
 export const VaultDashboard = () => {
   const [history, setHistory] = useState<UniversalHistoryRow[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -44,9 +45,11 @@ export const VaultDashboard = () => {
       if (!isMounted) return;
       if (error) {
         setStatus("error");
+        setErrorMessage(error.message);
         setHistory([]);
         return;
       }
+      setErrorMessage(null);
       setHistory((data ?? []) as UniversalHistoryRow[]);
       setStatus("idle");
     };
@@ -91,7 +94,12 @@ export const VaultDashboard = () => {
 
       {status === "error" ? (
         <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-          Verbindung zur Datenbank fehlgeschlagen.
+          <p>Verbindung zur Datenbank fehlgeschlagen.</p>
+          {errorMessage ? (
+            <p className="mt-2 text-xs text-rose-200/80">
+              {errorMessage}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
