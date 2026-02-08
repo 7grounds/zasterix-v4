@@ -1,9 +1,0 @@
-<!-- end list -->
-{
-  "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "cursor/*": false
-    }
-  }
-}
