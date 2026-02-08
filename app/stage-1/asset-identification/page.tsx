@@ -6,6 +6,8 @@
  */
 import { AssetIdentificationModule } from "@/features/stage-1/asset-identification/AssetIdentificationModule";
 
+export const dynamic = 'force-dynamic';
+
 const AssetIdentificationPage = () => {
   return <AssetIdentificationModule />;
 };

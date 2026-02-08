@@ -6,6 +6,8 @@
  */
 import { AssetCoachModule } from "@/features/stage-1/asset-coach/AssetCoachModule";
 
+export const dynamic = 'force-dynamic';
+
 const AssetCoachPage = () => {
   return <AssetCoachModule />;
 };

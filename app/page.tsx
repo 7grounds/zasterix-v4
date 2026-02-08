@@ -4,6 +4,8 @@
  * @DATA_INPUTS ["none"]
  * @REQUIRED_TOOLS []
  */
+export const dynamic = 'force-dynamic';
+
 export default function Home() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-3xl border border-slate-800/70 bg-slate-950 px-8 py-10 text-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.4)]">

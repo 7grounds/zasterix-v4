@@ -6,6 +6,8 @@
  */
 import { FeeMonsterModule } from "@/features/stage-2/fee-monster";
 
+export const dynamic = 'force-dynamic';
+
 const FeeMonsterPage = () => {
   return <FeeMonsterModule />;
 };
