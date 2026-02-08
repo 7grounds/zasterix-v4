@@ -202,7 +202,8 @@ export const TaskRenderer = ({ moduleId, stageId, tasks }: TaskRendererProps) =>
   }, []);
 
   const analysis = useMemo(() => {
-    return generateSwissWealthAnalysis(assetInput);
+    const base = generateSwissWealthAnalysis(assetInput);
+    return analysisSeed ? `${base}\n\nRevision: ${analysisSeed}` : base;
   }, [assetInput, analysisSeed]);
 
   const handleNext = () => {

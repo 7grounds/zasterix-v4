@@ -55,7 +55,9 @@ const AdminFinancesPage = () => {
       setIsLoading(true);
       const { data, error } = await supabase
         .from("billing_logs")
-        .select("agent_name, provider, token_count, cost_usd, cost_chf, created_at")
+        .select(
+          "id, user_id, organization_id, agent_name, provider, token_count, cost_usd, cost_chf, created_at",
+        )
         .eq("organization_id", organization.id)
         .order("created_at", { ascending: true });
 

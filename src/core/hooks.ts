@@ -55,9 +55,9 @@ export const useUserProgress = () => {
 
     const { data: latestEntry, error: latestError } = await supabase
       .from("user_progress")
-      .select("stage_id, module_id, completed_at")
+      .select("stage_id, module_id, completed_tasks, updated_at")
       .eq("user_id", userData.user.id)
-      .order("completed_at", { ascending: false, nullsFirst: false })
+      .order("updated_at", { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle();
 
@@ -85,35 +85,15 @@ export const useUserProgress = () => {
       return;
     }
 
-    const { data: completedRows, error: completedError } = await supabase
-      .from("user_progress")
-      .select("task_id")
-      .eq("user_id", userData.user.id)
-      .eq("stage_id", latestEntry.stage_id)
-      .eq("module_id", latestEntry.module_id)
-      .eq("completed", true);
-
-    if (completedError) {
-      setSnapshot({
-        currentStage: latestEntry.stage_id,
-        currentModule: latestEntry.module_id,
-        completedTasks: [],
-        lastSync: new Date().toISOString(),
-        isLoading: false,
-        error: completedError.message,
-      });
-      return;
-    }
-
     const completedTasks = Array.from(
-      new Set(completedRows?.map((row) => row.task_id).filter(Boolean) ?? []),
+      new Set(latestEntry.completed_tasks ?? []),
     );
 
     setSnapshot({
       currentStage: latestEntry.stage_id,
       currentModule: latestEntry.module_id,
       completedTasks,
-      lastSync: new Date().toISOString(),
+      lastSync: latestEntry.updated_at ?? new Date().toISOString(),
       isLoading: false,
       error: null,
     });

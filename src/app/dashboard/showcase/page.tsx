@@ -78,6 +78,53 @@ const PROBLEM_CLOUD = [
   { label: "Laborwerte verstehen", query: "laborwerte", category: "Medizin" },
 ];
 
+const normalizeText = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .trim();
+
+const isSubsequence = (query: string, target: string) => {
+  let index = 0;
+  for (const char of target) {
+    if (char === query[index]) {
+      index += 1;
+    }
+    if (index >= query.length) return true;
+  }
+  return false;
+};
+
+const levenshtein = (a: string, b: string) => {
+  const matrix = Array.from({ length: a.length + 1 }, () =>
+    new Array(b.length + 1).fill(0),
+  );
+  for (let i = 0; i <= a.length; i += 1) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) matrix[0][j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+};
+
+const fuzzyMatch = (query: string, target: string) => {
+  if (!query) return true;
+  if (target.includes(query)) return true;
+  if (query.length >= 3 && isSubsequence(query, target)) return true;
+  const words = target.split(/\s+/g);
+  const threshold = query.length <= 4 ? 1 : 2;
+  return words.some((word) => levenshtein(query, word) <= threshold);
+};
+
 const ShowcasePage = () => {
   const { organization } = useTenant();
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
@@ -137,53 +184,6 @@ const ShowcasePage = () => {
       return acc;
     }, {});
   }, [templates]);
-
-  const normalizeText = (value: string) =>
-    value
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, "")
-      .replace(/[^a-z0-9\s]/g, " ")
-      .trim();
-
-  const isSubsequence = (query: string, target: string) => {
-    let index = 0;
-    for (const char of target) {
-      if (char === query[index]) {
-        index += 1;
-      }
-      if (index >= query.length) return true;
-    }
-    return false;
-  };
-
-  const levenshtein = (a: string, b: string) => {
-    const matrix = Array.from({ length: a.length + 1 }, () =>
-      new Array(b.length + 1).fill(0),
-    );
-    for (let i = 0; i <= a.length; i += 1) matrix[i][0] = i;
-    for (let j = 0; j <= b.length; j += 1) matrix[0][j] = j;
-    for (let i = 1; i <= a.length; i += 1) {
-      for (let j = 1; j <= b.length; j += 1) {
-        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + cost,
-        );
-      }
-    }
-    return matrix[a.length][b.length];
-  };
-
-  const fuzzyMatch = (query: string, target: string) => {
-    if (!query) return true;
-    if (target.includes(query)) return true;
-    if (query.length >= 3 && isSubsequence(query, target)) return true;
-    const words = target.split(/\s+/g);
-    const threshold = query.length <= 4 ? 1 : 2;
-    return words.some((word) => levenshtein(query, word) <= threshold);
-  };
 
   const hiddenAgents = useMemo(
     () => new Set(["Vault-Guardian", "Registrar"]),

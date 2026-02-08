@@ -147,7 +147,7 @@ const DashboardPage = () => {
 
       const { data: historyRows, error: historyError } = await supabase
         .from("universal_history")
-        .select("id, payload, organization_id, created_at")
+        .select("id, user_id, organization_id, payload, summary_payload, created_at")
         .eq("user_id", data.user.id)
         .order("created_at", { ascending: false })
         .limit(5);

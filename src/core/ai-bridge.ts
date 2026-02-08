@@ -5,6 +5,7 @@
  * @REQUIRED_TOOLS ["logManagementProtocol"]
  */
 import { logManagementProtocol } from "@/core/agent-factory";
+import { supabase } from "@/core/supabase";
 import { calculateCost, estimateTokens } from "@/core/cost-engine";
 import { EXECUTIVE_APPROVAL_TOKEN } from "@/core/governance";
 

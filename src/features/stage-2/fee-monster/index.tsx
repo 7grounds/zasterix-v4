@@ -4,6 +4,8 @@
  * @DATA_INPUTS ["feeMonsterTasks"]
  * @REQUIRED_TOOLS ["ModuleShell", "FeeCalculator"]
  */
+"use client";
+
 import { ModuleShell } from "@/shared/components/ModuleShell";
 import { FeeCalculator } from "@/shared/tools/FeeCalculator";
 import { feeMonsterTasks } from "./tasks.config";

@@ -11,11 +11,6 @@ import { supabase } from "@/core/supabase";
 import { MAIN_AGENT_SYSTEM_PROMPT } from "@/core/agent-prompts";
 import { useTenant } from "@/core/tenant-context";
 
-type SearchLogRow = {
-  query: string;
-  results_found: boolean;
-};
-
 type GapEntry = {
   query: string;
   count: number;
