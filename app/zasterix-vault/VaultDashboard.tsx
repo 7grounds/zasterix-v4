@@ -7,7 +7,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../../../lib/supabase";
+import { supabase } from "../../lib/supabase";
 import type { Database } from "@/core/types/database.types";
 import { DynamicPayloadRenderer } from "@/shared/components/DynamicPayloadRenderer";
 

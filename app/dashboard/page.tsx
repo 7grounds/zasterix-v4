@@ -47,7 +47,9 @@ const RecentAnalyses = ({ entries }: RecentAnalysesProps) => {
     return <p className="text-sm text-slate-400">No history yet.</p>;
   }
 
-  const getPayloadTitle = (payload: Database["public"]["Tables"]["universal_history"]["Row"]["payload"]) => {
+  const getPayloadTitle = (
+    payload: Database["public"]["Tables"]["universal_history"]["Row"]["payload"],
+  ) => {
     if (payload && typeof payload === "object" && !Array.isArray(payload)) {
       const record = payload as Record<string, unknown>;
       if (typeof record.title === "string" && record.title.trim()) {
@@ -147,7 +149,9 @@ const DashboardPage = () => {
 
       const { data: historyRows, error: historyError } = await supabase
         .from("universal_history")
-        .select("id, user_id, organization_id, payload, summary_payload, created_at")
+        .select(
+          "id, user_id, organization_id, payload, summary_payload, created_at",
+        )
         .eq("user_id", data.user.id)
         .order("created_at", { ascending: false })
         .limit(5);
@@ -423,7 +427,7 @@ const DashboardPage = () => {
 
           <section className="rounded-3xl border border-slate-800/70 bg-slate-950 px-8 py-8 text-slate-100 shadow-[0_20px_55px_rgba(15,23,42,0.4)]">
             <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
-          <span>Recent History</span>
+              <span>Recent History</span>
               <span>Last 5</span>
             </div>
             <div className="mt-5">

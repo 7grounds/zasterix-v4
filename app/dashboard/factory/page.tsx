@@ -487,33 +487,33 @@ const FactoryPage = () => {
               ) : null}
               <div className="grid gap-4 md:grid-cols-2">
                 {filteredTemplates.map((template) => (
-                <div
-                  key={template.id}
-                  className="flex h-full flex-col justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 px-4 py-4 text-sm text-slate-200"
-                >
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-semibold text-slate-100">
-                      {template.icon ? `${template.icon} ` : ""}
-                      {template.name}
-                    </h3>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                      {template.description}
-                    </p>
-                    {template.category ? (
-                      <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-300">
-                        {template.category}
-                      </p>
-                    ) : null}
-                  </div>
-                  <button
-                    className="mt-4 rounded-full border border-emerald-400/40 px-4 py-2 text-xs uppercase tracking-[0.24em] text-emerald-200 hover:border-emerald-300"
-                    type="button"
-                    onClick={() => handleStartChat(template)}
+                  <div
+                    key={template.id}
+                    className="flex h-full flex-col justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 px-4 py-4 text-sm text-slate-200"
                   >
-                    Chat starten
-                  </button>
-                </div>
-              ))}
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold text-slate-100">
+                        {template.icon ? `${template.icon} ` : ""}
+                        {template.name}
+                      </h3>
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                        {template.description}
+                      </p>
+                      {template.category ? (
+                        <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-300">
+                          {template.category}
+                        </p>
+                      ) : null}
+                    </div>
+                    <button
+                      className="mt-4 rounded-full border border-emerald-400/40 px-4 py-2 text-xs uppercase tracking-[0.24em] text-emerald-200 hover:border-emerald-300"
+                      type="button"
+                      onClick={() => handleStartChat(template)}
+                    >
+                      Chat starten
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}
