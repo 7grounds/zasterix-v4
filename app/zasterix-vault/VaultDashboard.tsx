@@ -14,6 +14,10 @@ import { DynamicPayloadRenderer } from "@/shared/components/DynamicPayloadRender
 const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const envAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+type VaultDashboardProps = {
+  debugMode?: boolean;
+};
+
 type UniversalHistoryRow =
   Database["public"]["Tables"]["universal_history"]["Row"];
 
@@ -29,7 +33,7 @@ const formatTimestamp = (value: string | null) => {
   });
 };
 
-export const VaultDashboard = () => {
+export const VaultDashboard = ({ debugMode = false }: VaultDashboardProps) => {
   const [history, setHistory] = useState<UniversalHistoryRow[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -99,6 +103,14 @@ export const VaultDashboard = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!debugMode) return;
+    console.info("Vault env status:", {
+      hasSupabaseUrl: Boolean(envUrl),
+      hasSupabaseAnonKey: Boolean(envAnonKey),
+    });
+  }, [debugMode]);
+
   return (
     <div className="space-y-6">
       <header className="space-y-2 text-center">
@@ -112,6 +124,24 @@ export const VaultDashboard = () => {
           Live protocol stream from universal_history.
         </p>
       </header>
+
+      {debugMode ? (
+        <section className="rounded-2xl border border-slate-800/70 bg-slate-950/80 px-4 py-4 text-sm text-slate-200">
+          <div className="text-xs uppercase tracking-[0.24em] text-emerald-300">
+            System Status
+          </div>
+          <div className="mt-3 space-y-1 text-xs text-slate-300">
+            <p>hasUrl: {Boolean(envUrl) ? "true" : "false"}</p>
+            <p>hasKey: {Boolean(envAnonKey) ? "true" : "false"}</p>
+            {status === "error" ? (
+              <div className="mt-2 space-y-1 text-rose-200">
+                <p>Error: {errorMessage ?? "unknown"}</p>
+                {errorDetails ? <p>{errorDetails}</p> : null}
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {status === "error" ? (
         <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
