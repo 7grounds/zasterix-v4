@@ -11,6 +11,9 @@ import { supabase } from "../../lib/supabase";
 import type { Database } from "@/core/types/database.types";
 import { DynamicPayloadRenderer } from "@/shared/components/DynamicPayloadRenderer";
 
+const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const envAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
 type UniversalHistoryRow =
   Database["public"]["Tables"]["universal_history"]["Row"];
 
@@ -46,6 +49,10 @@ export const VaultDashboard = () => {
       if (!isMounted) return;
       if (error) {
         console.error("Vault universal_history fetch failed:", error);
+        console.error("Vault env check:", {
+          hasSupabaseUrl: Boolean(envUrl),
+          hasSupabaseAnonKey: Boolean(envAnonKey),
+        });
         setStatus("error");
         setErrorMessage(error.message);
         const meta = [
