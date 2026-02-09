@@ -21,7 +21,7 @@ export default function Home() {
 
       <a
         className="mx-auto inline-flex items-center justify-center rounded-full bg-amber-300 px-6 py-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-900 shadow-[0_12px_30px_rgba(251,191,36,0.35)] transition hover:bg-amber-200"
-        href="/zasterix-vault"
+        href="/vault"
       >
         Zasterix Vault
       </a>
