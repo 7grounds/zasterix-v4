@@ -6,20 +6,26 @@
  */
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { useEffect } from "react";
 import type { Database } from "@/core/types/database.types";
 import { DynamicPayloadRenderer } from "@/shared/components/DynamicPayloadRenderer";
 
-const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const envAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+type UniversalHistoryRow =
+  Database["public"]["Tables"]["universal_history"]["Row"];
+
+const clientHasUrl = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const clientHasKey = Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 type VaultDashboardProps = {
   debugMode?: boolean;
+  initialHistory?: UniversalHistoryRow[];
+  serverErrorMessage?: string | null;
+  serverErrorDetails?: string | null;
+  serverEnvStatus?: {
+    hasUrl: boolean;
+    hasKey: boolean;
+  };
 };
-
-type UniversalHistoryRow =
-  Database["public"]["Tables"]["universal_history"]["Row"];
 
 const formatTimestamp = (value: string | null) => {
   if (!value) return "--";
@@ -33,81 +39,21 @@ const formatTimestamp = (value: string | null) => {
   });
 };
 
-export const VaultDashboard = ({ debugMode = false }: VaultDashboardProps) => {
-  const [history, setHistory] = useState<UniversalHistoryRow[]>([]);
-  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorDetails, setErrorDetails] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadHistory = async () => {
-      setStatus("loading");
-      const { data, error } = await supabase
-        .from("universal_history")
-        .select("id, payload, summary_payload, created_at")
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-      if (!isMounted) return;
-      if (error) {
-        console.error("Vault universal_history fetch failed:", error);
-        console.error("Vault env check:", {
-          hasSupabaseUrl: Boolean(envUrl),
-          hasSupabaseAnonKey: Boolean(envAnonKey),
-        });
-        setStatus("error");
-        setErrorMessage(error.message);
-        const meta = [
-          error.code ? `code: ${error.code}` : null,
-          error.details ? `details: ${error.details}` : null,
-          error.hint ? `hint: ${error.hint}` : null,
-          typeof (error as { status?: number }).status === "number"
-            ? `status: ${(error as { status: number }).status}`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        setErrorDetails(meta || null);
-        setHistory([]);
-        return;
-      }
-      setErrorMessage(null);
-      setErrorDetails(null);
-      setHistory((data ?? []) as UniversalHistoryRow[]);
-      setStatus("idle");
-    };
-
-    loadHistory();
-
-    const channel = supabase
-      .channel("universal_history")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "universal_history" },
-        (payload) => {
-          const incoming = payload.new as UniversalHistoryRow | undefined;
-          if (!incoming || !incoming.id) return;
-          setHistory((prev) => {
-            const filtered = prev.filter((item) => item.id !== incoming.id);
-            return [incoming, ...filtered].slice(0, 50);
-          });
-        },
-      )
-      .subscribe();
-
-    return () => {
-      isMounted = false;
-      supabase.removeChannel(channel);
-    };
-  }, []);
+export const VaultDashboard = ({
+  debugMode = false,
+  initialHistory = [],
+  serverErrorMessage = null,
+  serverErrorDetails = null,
+  serverEnvStatus,
+}: VaultDashboardProps) => {
+  const history = initialHistory ?? [];
+  const hasError = Boolean(serverErrorMessage || serverErrorDetails);
 
   useEffect(() => {
     if (!debugMode) return;
-    console.info("Vault env status:", {
-      hasSupabaseUrl: Boolean(envUrl),
-      hasSupabaseAnonKey: Boolean(envAnonKey),
+    console.info("Vault client env status:", {
+      hasSupabaseUrl: clientHasUrl,
+      hasSupabaseAnonKey: clientHasKey,
     });
   }, [debugMode]);
 
@@ -131,29 +77,29 @@ export const VaultDashboard = ({ debugMode = false }: VaultDashboardProps) => {
             System Status
           </div>
           <div className="mt-3 space-y-1 text-xs text-slate-300">
-            <p>hasUrl: {Boolean(envUrl) ? "true" : "false"}</p>
-            <p>hasKey: {Boolean(envAnonKey) ? "true" : "false"}</p>
-            {status === "error" ? (
+            <p>hasUrl: {serverEnvStatus?.hasUrl ? "true" : "false"}</p>
+            <p>hasKey: {serverEnvStatus?.hasKey ? "true" : "false"}</p>
+            {hasError ? (
               <div className="mt-2 space-y-1 text-rose-200">
-                <p>Error: {errorMessage ?? "unknown"}</p>
-                {errorDetails ? <p>{errorDetails}</p> : null}
+                <p>Error: {serverErrorMessage ?? "unknown"}</p>
+                {serverErrorDetails ? <p>{serverErrorDetails}</p> : null}
               </div>
             ) : null}
           </div>
         </section>
       ) : null}
 
-      {status === "error" ? (
+      {hasError ? (
         <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
           <p>Verbindung zur Datenbank fehlgeschlagen.</p>
-          {errorMessage ? (
+          {serverErrorMessage ? (
             <p className="mt-2 text-xs text-rose-200/80">
-              {errorMessage}
+              {serverErrorMessage}
             </p>
           ) : null}
-          {errorDetails ? (
+          {serverErrorDetails ? (
             <p className="mt-2 text-xs text-rose-200/70">
-              {errorDetails}
+              {serverErrorDetails}
             </p>
           ) : null}
         </div>
