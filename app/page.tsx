@@ -7,6 +7,10 @@
 export const dynamic = 'force-dynamic';
 
 export default function Home() {
+  const vaultToken =
+    process.env.NEXT_PUBLIC_VAULT_TOKEN ?? "Zasterix-2026-Safe";
+  const vaultHref = `/zasterix-vault?token=${encodeURIComponent(vaultToken)}`;
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-3xl border border-slate-800/70 bg-slate-950 px-8 py-10 text-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.4)]">
       <div className="space-y-3 text-center">
@@ -21,7 +25,7 @@ export default function Home() {
 
       <a
         className="mx-auto inline-flex items-center justify-center rounded-full bg-amber-300 px-6 py-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-900 shadow-[0_12px_30px_rgba(251,191,36,0.35)] transition hover:bg-amber-200"
-        href="/zasterix-vault"
+        href={vaultHref}
       >
         Vault öffnen
       </a>
