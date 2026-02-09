@@ -30,6 +30,7 @@ export const VaultDashboard = () => {
   const [history, setHistory] = useState<UniversalHistoryRow[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -44,12 +45,25 @@ export const VaultDashboard = () => {
 
       if (!isMounted) return;
       if (error) {
+        console.error("Vault universal_history fetch failed:", error);
         setStatus("error");
         setErrorMessage(error.message);
+        const meta = [
+          error.code ? `code: ${error.code}` : null,
+          error.details ? `details: ${error.details}` : null,
+          error.hint ? `hint: ${error.hint}` : null,
+          typeof (error as { status?: number }).status === "number"
+            ? `status: ${(error as { status: number }).status}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        setErrorDetails(meta || null);
         setHistory([]);
         return;
       }
       setErrorMessage(null);
+      setErrorDetails(null);
       setHistory((data ?? []) as UniversalHistoryRow[]);
       setStatus("idle");
     };
@@ -98,6 +112,11 @@ export const VaultDashboard = () => {
           {errorMessage ? (
             <p className="mt-2 text-xs text-rose-200/80">
               {errorMessage}
+            </p>
+          ) : null}
+          {errorDetails ? (
+            <p className="mt-2 text-xs text-rose-200/70">
+              {errorDetails}
             </p>
           ) : null}
         </div>
