@@ -21,7 +21,7 @@ const entries = [
       summary: "Willkommen im Zasterix Vault.",
       details: "Boardroom-Feed wurde initialisiert.",
       decisions: ["Vault aktiviert", "Audit-Feed gestartet"],
-      open_tasks: ["VAULT_ACCESS_TOKEN prüfen", "Admin-Rollen testen"],
+      open_tasks: ["Admin-Rollen testen"],
       flow_status: "bootstrapped",
     },
   },
