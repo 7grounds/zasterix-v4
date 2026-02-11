@@ -16,10 +16,12 @@ const supabaseUrl =
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-interface VaultItem {
-  id: string | number;
-  payload: Record<string, unknown> | null;
-  created_at: string | null;
+// Interface fuer Origo-Daten
+interface VaultEntry {
+  id: string;
+  name: string;
+  created_at: string;
+  metadata?: Record<string, unknown>;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
@@ -29,22 +31,33 @@ const asRecord = (value: unknown): Record<string, unknown> | null => {
   return value as Record<string, unknown>;
 };
 
-const toVaultItems = (rows: unknown): VaultItem[] => {
+const toVaultEntries = (rows: unknown): VaultEntry[] => {
   if (!Array.isArray(rows)) {
     return [];
   }
 
   return rows.map((row, index) => {
     const record = asRecord(row);
+    const payload = asRecord(record?.payload);
+    const payloadName = payload?.name;
+    const recordName = record?.name;
     const idValue = record?.id;
 
     return {
       id:
-        typeof idValue === "string" || typeof idValue === "number"
+        typeof idValue === "string"
           ? idValue
-          : `row-${index}`,
-      payload: asRecord(record?.payload),
-      created_at: typeof record?.created_at === "string" ? record.created_at : null,
+          : typeof idValue === "number"
+            ? String(idValue)
+            : `row-${index}`,
+      name:
+        typeof payloadName === "string"
+          ? payloadName
+          : typeof recordName === "string"
+            ? recordName
+            : "Untitled entry",
+      created_at: typeof record?.created_at === "string" ? record.created_at : "",
+      metadata: payload ?? undefined,
     };
   });
 };
@@ -74,7 +87,7 @@ const renderPayload = (payload: unknown) => {
 };
 
 export default function VaultPage() {
-  const [history, setHistory] = useState<VaultItem[]>([]);
+  const [items, setItems] = useState<VaultEntry[]>([]);
   const [error, setError] = useState<unknown | null>(null);
 
   useEffect(() => {
@@ -91,12 +104,12 @@ export default function VaultPage() {
 
       if (fetchError) {
         setError(fetchError);
-        setHistory([]);
+        setItems([]);
         return;
       }
 
       setError(null);
-      setHistory(toVaultItems(data));
+      setItems(toVaultEntries(data));
     };
 
     loadHistory();
@@ -126,19 +139,20 @@ export default function VaultPage() {
       ) : null}
 
       <div className="space-y-3">
-        {history.length === 0 ? (
+        {items.length === 0 ? (
           <p className="text-sm text-slate-400">Keine Einträge vorhanden.</p>
         ) : (
-          history.map((entry, index) => (
+          items.map((item: VaultEntry) => (
             <div
-              key={entry?.id ?? `row-${index}`}
+              key={item.id}
               className="rounded-2xl border border-slate-800/80 bg-slate-900/60 px-4 py-4 text-sm text-slate-200"
             >
+              <div className="text-xs font-medium text-slate-100">{item.name}</div>
               <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">
-                {entry?.created_at ?? "--"}
+                {item.created_at || "--"}
               </div>
               <div className="mt-2 text-xs text-slate-200">
-                {renderPayload(entry?.payload)}
+                {renderPayload(item.metadata)}
               </div>
             </div>
           ))
