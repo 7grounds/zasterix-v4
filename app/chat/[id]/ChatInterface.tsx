@@ -1,7 +1,7 @@
 /**
  * @MODULE_ID app.chat.interface
  * @STAGE admin
- * @DATA_INPUTS ["agent", "chat_input", "course_roadmap"]
+ * @DATA_INPUTS ["agent", "chat_input", "course_roadmap", "stream_chunks"]
  * @REQUIRED_TOOLS ["app.api.chat", "supabase-js"]
  */
 "use client";
@@ -30,6 +30,13 @@ type CourseStep = {
   id: number | string;
   title: string;
   status: string;
+};
+
+type ChatPayload = {
+  text?: string;
+  error?: string;
+  roadmap?: CourseStep[] | null;
+  completedStepIds?: number[];
 };
 
 const createId = () =>
@@ -157,6 +164,7 @@ export default function ChatInterface({
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [waitingForFirstChunk, setWaitingForFirstChunk] = useState(false);
   const [resettingRoadmap, setResettingRoadmap] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
@@ -264,6 +272,84 @@ export default function ChatInterface({
     setResettingRoadmap(false);
   };
 
+  const applyRoadmapMeta = (roadmapValue: unknown, completedIdsValue: unknown) => {
+    const roadmap = toCourseRoadmap(roadmapValue);
+    if (roadmap.length > 0) {
+      setAgent((previous) => ({
+        ...previous,
+        courseRoadmap: roadmap,
+        course_roadmap: roadmap,
+      }));
+      return;
+    }
+
+    const completedStepIds = Array.isArray(completedIdsValue)
+      ? completedIdsValue
+          .map((value) =>
+            typeof value === "number" ? value : Number.parseInt(String(value), 10),
+          )
+          .filter((value) => Number.isFinite(value))
+      : [];
+
+    if (completedStepIds.length > 0) {
+      setAgent((previous) => {
+        const baseRoadmap =
+          previous.course_roadmap.length > 0
+            ? previous.course_roadmap
+            : previous.courseRoadmap;
+        const updatedRoadmap = applyCompletedStepIds(baseRoadmap, completedStepIds);
+        return {
+          ...previous,
+          courseRoadmap: updatedRoadmap,
+          course_roadmap: updatedRoadmap,
+        };
+      });
+    }
+  };
+
+  const persistModuleCompletion = async (moduleId: number | string) => {
+    if (!supabase || !userId) {
+      return;
+    }
+
+    const normalizedModuleId =
+      typeof moduleId === "number" ? moduleId : Number.parseInt(String(moduleId), 10);
+    const safeModuleId = Number.isFinite(normalizedModuleId)
+      ? normalizedModuleId
+      : String(moduleId);
+    const progressStageId = "zasterix-teacher";
+    const progressModuleId = `${agent.id}-module-${safeModuleId}`;
+    const completedTaskId = `lesson-${safeModuleId}-completed`;
+
+    const { data: existingProgress } = await supabase
+      .from("user_progress")
+      .select("completed_tasks")
+      .eq("user_id", userId)
+      .eq("stage_id", progressStageId)
+      .eq("module_id", progressModuleId)
+      .maybeSingle();
+
+    const existingTasks = existingProgress?.completed_tasks ?? [];
+    const completedTasks = Array.from(new Set([...existingTasks, completedTaskId]));
+
+    const { error: progressError } = await supabase.from("user_progress").upsert(
+      {
+        user_id: userId,
+        organization_id: organizationId,
+        stage_id: progressStageId,
+        module_id: progressModuleId,
+        completed_tasks: completedTasks,
+        is_completed: true,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,stage_id,module_id" },
+    );
+
+    if (progressError) {
+      console.error("user_progress update error:", progressError);
+    }
+  };
+
   const send = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = input.trim();
@@ -304,10 +390,26 @@ PFLICHTMODUS LEHRER:
 - Jede Lektion muss enthalten: Lernziel, Erklaerung, Schritt-fuer-Schritt-Anleitung, Beispiel, Mini-Uebung, naechster Schritt.
 - Wenn eine Roadmap vorhanden ist, unterrichte das angeforderte Modul inhaltlich ausfuehrlich.
 - Antworte immer mit direkt nutzbarem Lerninhalt.`;
+    const assistantMessageId = createId();
+    const updateAssistantMessage = (content: string) => {
+      setMessages((previous) =>
+        previous.map((entry) =>
+          entry.id === assistantMessageId ? { ...entry, content } : entry,
+        ),
+      );
+    };
 
-    setMessages(nextMessages);
+    setMessages([
+      ...nextMessages,
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+      },
+    ]);
     setInput("");
     setLoading(true);
+    setWaitingForFirstChunk(true);
 
     try {
       const response = await fetch("/api/chat", {
@@ -322,105 +424,123 @@ PFLICHTMODUS LEHRER:
           agentName: agent.name,
           history: historyForApi,
           hiddenInstruction,
+          stream: true,
         }),
       });
 
-      const payload = (await response.json()) as {
-        text?: string;
-        error?: string;
-        roadmap?: CourseStep[] | null;
-        completedStepIds?: number[];
+      if (!response.ok) {
+        let errorMessage = "Chat request failed";
+        try {
+          const payload = (await response.json()) as ChatPayload;
+          errorMessage = payload.error || errorMessage;
+        } catch {
+          // ignore json parse error for non-json responses
+        }
+        throw new Error(errorMessage);
+      }
+
+      let receivedFirstChunk = false;
+      let assistantContent = "";
+
+      const processStreamEventLine = (line: string) => {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        const type = parsed.type;
+        if (type !== "chunk" && type !== "meta" && type !== "done" && type !== "error" && type !== "final_text") {
+          return;
+        }
+
+        if (type === "chunk") {
+          const text = typeof parsed.text === "string" ? parsed.text : "";
+          if (!text) {
+            return;
+          }
+          assistantContent += text;
+          if (!receivedFirstChunk) {
+            receivedFirstChunk = true;
+            setWaitingForFirstChunk(false);
+          }
+          updateAssistantMessage(assistantContent);
+          return;
+        }
+
+        if (type === "final_text") {
+          const finalText = typeof parsed.text === "string" ? parsed.text : "";
+          assistantContent = finalText;
+          if (!receivedFirstChunk && finalText.length > 0) {
+            receivedFirstChunk = true;
+            setWaitingForFirstChunk(false);
+          }
+          updateAssistantMessage(finalText || "Keine Antwort erhalten.");
+          return;
+        }
+
+        if (type === "meta") {
+          applyRoadmapMeta(parsed.roadmap, parsed.completedStepIds);
+          return;
+        }
+
+        if (type === "error") {
+          const message =
+            typeof parsed.message === "string" && parsed.message.length > 0
+              ? parsed.message
+              : "Kommunikationsfehler mit dem Agenten.";
+          throw new Error(message);
+        }
       };
 
-      if (!response.ok) {
-        throw new Error(payload.error || "Chat request failed");
-      }
+      if (!response.body) {
+        const payload = (await response.json()) as ChatPayload;
+        applyRoadmapMeta(payload.roadmap, payload.completedStepIds);
+        const fallbackText = payload.text?.trim() || "Keine Antwort erhalten.";
+        if (fallbackText.length > 0) {
+          receivedFirstChunk = true;
+          setWaitingForFirstChunk(false);
+        }
+        updateAssistantMessage(fallbackText);
+      } else {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-      if (Array.isArray(payload.roadmap) && payload.roadmap.length > 0) {
-        setAgent((previous) => ({
-          ...previous,
-          courseRoadmap: payload.roadmap ?? [],
-          course_roadmap: payload.roadmap ?? [],
-        }));
-      } else if (
-        Array.isArray(payload.completedStepIds) &&
-        payload.completedStepIds.length > 0
-      ) {
-        setAgent((previous) => {
-          const baseRoadmap =
-            previous.course_roadmap.length > 0
-              ? previous.course_roadmap
-              : previous.courseRoadmap;
-          const updatedRoadmap = applyCompletedStepIds(
-            baseRoadmap,
-            payload.completedStepIds ?? [],
-          );
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
 
-          return {
-            ...previous,
-            courseRoadmap: updatedRoadmap,
-            course_roadmap: updatedRoadmap,
-          };
-        });
-      }
+          let newlineIndex = buffer.indexOf("\n");
+          while (newlineIndex !== -1) {
+            const line = buffer.slice(0, newlineIndex).trim();
+            buffer = buffer.slice(newlineIndex + 1);
+            if (line.length > 0) {
+              processStreamEventLine(line);
+            }
+            newlineIndex = buffer.indexOf("\n");
+          }
+        }
 
-      if (shouldAutoStartModule && supabase && userId) {
-        const progressStageId = "zasterix-teacher";
-        const progressModuleId = `${agent.id}-module-${targetModule.id}`;
-        const completedTaskId = `lesson-${targetModule.id}-completed`;
+        const trailing = buffer.trim();
+        if (trailing.length > 0) {
+          processStreamEventLine(trailing);
+        }
 
-        const { data: existingProgress } = await supabase
-          .from("user_progress")
-          .select("completed_tasks")
-          .eq("user_id", userId)
-          .eq("stage_id", progressStageId)
-          .eq("module_id", progressModuleId)
-          .maybeSingle();
-
-        const existingTasks = existingProgress?.completed_tasks ?? [];
-        const completedTasks = Array.from(
-          new Set([...existingTasks, completedTaskId]),
-        );
-
-        const { error: progressError } = await supabase.from("user_progress").upsert(
-          {
-            user_id: userId,
-            organization_id: organizationId,
-            stage_id: progressStageId,
-            module_id: progressModuleId,
-            completed_tasks: completedTasks,
-            is_completed: true,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id,stage_id,module_id" },
-        );
-
-        if (progressError) {
-          console.error("user_progress update error:", progressError);
+        if (!assistantContent.trim()) {
+          updateAssistantMessage("Keine Antwort erhalten.");
         }
       }
 
-      setMessages((previous) => [
-        ...previous,
-        {
-          id: createId(),
-          role: "assistant",
-          content: payload.text?.trim() || "Keine Antwort erhalten.",
-        },
-      ]);
+      if (shouldAutoStartModule) {
+        await persistModuleCompletion(targetModule.id);
+      }
     } catch (error: unknown) {
-      setMessages((previous) => [
-        ...previous,
-        {
-          id: createId(),
-          role: "assistant",
-          content:
-            error instanceof Error
-              ? `Kommunikationsfehler: ${error.message}`
-              : "Kommunikationsfehler mit dem Agenten.",
-        },
-      ]);
+      updateAssistantMessage(
+        error instanceof Error
+          ? `Kommunikationsfehler: ${error.message}`
+          : "Kommunikationsfehler mit dem Agenten.",
+      );
     } finally {
+      setWaitingForFirstChunk(false);
       setLoading(false);
     }
   };
@@ -489,9 +609,22 @@ PFLICHTMODUS LEHRER:
               {message.content}
             </div>
           ))}
-          {loading ? (
-            <div className="animate-pulse text-[10px] text-[#8696a0]">
-              Zasterix verarbeitet Anfrage...
+          {loading && waitingForFirstChunk ? (
+            <div className="self-start rounded-2xl rounded-tl-none border border-[#222d34] bg-[#202c33] px-3 py-2">
+              <div className="flex items-center gap-1">
+                <span
+                  className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#8696a0]"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#8696a0]"
+                  style={{ animationDelay: "120ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#8696a0]"
+                  style={{ animationDelay: "240ms" }}
+                />
+              </div>
             </div>
           ) : null}
           <div ref={messagesEndRef} className="h-0" />

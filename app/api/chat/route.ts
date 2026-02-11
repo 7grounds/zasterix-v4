@@ -1,7 +1,7 @@
 /**
  * @MODULE_ID app.api.chat
  * @STAGE admin
- * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction"]
+ * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction", "stream"]
  * @REQUIRED_TOOLS ["openai", "supabase-js"]
  */
 import { NextResponse } from "next/server";
@@ -133,9 +133,131 @@ const toCourseRoadmap = (value: unknown): CourseStep[] | null => {
   return parsed.length > 0 ? parsed : null;
 };
 
+const sanitizeAssistantContent = (value: string) =>
+  value
+    .replace(/COURSE_JSON_START[\s\S]*?COURSE_JSON_END/g, "")
+    .replace(/UPDATE_STEP_\d+_COMPLETED/g, "");
+
+const sanitizeAssistantContentPartial = (value: string) => {
+  let cleaned = sanitizeAssistantContent(value);
+  const openCourseBlockIndex = cleaned.lastIndexOf("COURSE_JSON_START");
+  if (openCourseBlockIndex !== -1) {
+    cleaned = cleaned.slice(0, openCourseBlockIndex);
+  }
+  return cleaned.replace(/UPDATE_STEP_[\d_]*$/g, "");
+};
+
+const finalizeAiPayload = async ({
+  aiContent,
+  userMessage,
+  agentId,
+}: {
+  aiContent: string;
+  userMessage: string;
+  agentId?: string;
+}) => {
+  const courseJsonMatch = aiContent.match(
+    /COURSE_JSON_START([\s\S]*?)COURSE_JSON_END/,
+  );
+  let roadmapPayload: CourseStep[] | null = null;
+
+  if (courseJsonMatch) {
+    try {
+      const parsedJson = JSON.parse(courseJsonMatch[1].trim()) as unknown;
+      const roadmapData = toCourseRoadmap(parsedJson);
+      roadmapPayload = roadmapData;
+
+      if (roadmapData && agentId) {
+        if (supabaseAdmin) {
+          const { error: updateError } = await supabaseAdmin
+            .from("agent_templates")
+            .update({ course_roadmap: roadmapData })
+            .eq("id", agentId);
+
+          if (updateError) {
+            console.error("Roadmap update error:", updateError);
+          }
+        } else {
+          console.warn(
+            "SUPABASE_SERVICE_ROLE_KEY missing. Roadmap update skipped.",
+          );
+        }
+      }
+    } catch (parseError: unknown) {
+      console.error("Parsing Error", parseError);
+    }
+  }
+
+  const completionMarkersFromAi = extractCompletedStepIds(aiContent);
+  const completionMarkersFromUser = inferCompletedStepIdsFromUserMessage(
+    userMessage,
+    roadmapPayload ?? [],
+  );
+  const completedStepIds = Array.from(
+    new Set([...completionMarkersFromAi, ...completionMarkersFromUser]),
+  );
+
+  if (agentId && completedStepIds.length > 0) {
+    let baseRoadmap = roadmapPayload ?? null;
+
+    if (!baseRoadmap && supabaseAdmin) {
+      const { data: agentData, error: agentLoadError } = await supabaseAdmin
+        .from("agent_templates")
+        .select("course_roadmap")
+        .eq("id", agentId)
+        .maybeSingle();
+
+      if (agentLoadError) {
+        console.error("Roadmap load error:", agentLoadError);
+      } else {
+        baseRoadmap = toCourseRoadmap(agentData?.course_roadmap) ?? null;
+      }
+    }
+
+    if (baseRoadmap && baseRoadmap.length > 0) {
+      const agent = { course_roadmap: baseRoadmap };
+      const updatedRoadmap = applyCompletedStepIdsToRoadmap(
+        agent.course_roadmap,
+        completedStepIds,
+      );
+      roadmapPayload = updatedRoadmap;
+
+      if (supabaseAdmin) {
+        const { error: updateStepError } = await supabaseAdmin
+          .from("agent_templates")
+          .update({ course_roadmap: updatedRoadmap })
+          .eq("id", agentId);
+
+        if (updateStepError) {
+          console.error("Roadmap completion update error:", updateStepError);
+        }
+      } else {
+        console.warn(
+          "SUPABASE_SERVICE_ROLE_KEY missing. Completion marker persisted only in response payload.",
+        );
+      }
+    }
+  }
+
+  const cleanText = sanitizeAssistantContent(aiContent).trim();
+  return {
+    cleanText,
+    roadmapPayload,
+    completedStepIds,
+  };
+};
+
 export async function POST(req: Request) {
   try {
-    const { message, agentId, systemPrompt, agentName, history, hiddenInstruction } =
+    const {
+      message,
+      agentId,
+      systemPrompt,
+      agentName,
+      history,
+      hiddenInstruction,
+      stream,
+    } =
       (await req.json()) as {
       message?: string;
       agentId?: string;
@@ -143,6 +265,7 @@ export async function POST(req: Request) {
       agentName?: string;
       history?: ChatHistoryEntry[];
       hiddenInstruction?: string;
+      stream?: boolean;
     };
 
     if (!message || typeof message !== "string") {
@@ -183,6 +306,7 @@ export async function POST(req: Request) {
         : null;
 
     const normalizedMessage = message.trim();
+    const shouldStream = Boolean(stream);
 
     const normalizedHistory = Array.isArray(history)
       ? history
@@ -221,120 +345,110 @@ export async function POST(req: Request) {
       ];
     })();
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview", // Oder dein bevorzugtes Modell
-      messages: [
-        {
-          role: "system",
-          content: [
-            resolvedSystemPrompt,
-            globalInstruction,
-            hiddenSystemInstruction
-              ? `VERSTECKTER UNTERRICHTSBEFEHL:\n${hiddenSystemInstruction}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join("\n\n"),
+    const requestMessages = [
+      {
+        role: "system" as const,
+        content: [
+          resolvedSystemPrompt,
+          globalInstruction,
+          hiddenSystemInstruction
+            ? `VERSTECKTER UNTERRICHTSBEFEHL:\n${hiddenSystemInstruction}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      },
+      ...historyWithCurrentMessage,
+    ];
+
+    if (shouldStream) {
+      const encoder = new TextEncoder();
+      const streamResponse = new ReadableStream({
+        start(controller) {
+          const sendEvent = (event: Record<string, unknown>) => {
+            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          };
+
+          const run = async () => {
+            try {
+              const completionStream = await openai.chat.completions.create({
+                model: "gpt-4-turbo-preview",
+                messages: requestMessages,
+                stream: true,
+              });
+
+              let aiContent = "";
+              let visibleLength = 0;
+
+              for await (const chunk of completionStream) {
+                const deltaText = chunk.choices[0]?.delta?.content;
+                if (typeof deltaText !== "string" || deltaText.length === 0) {
+                  continue;
+                }
+
+                aiContent += deltaText;
+                const visibleText = sanitizeAssistantContentPartial(aiContent);
+                const nextChunk = visibleText.slice(visibleLength);
+                if (nextChunk.length > 0) {
+                  visibleLength = visibleText.length;
+                  sendEvent({ type: "chunk", text: nextChunk });
+                }
+              }
+
+              const finalized = await finalizeAiPayload({
+                aiContent,
+                userMessage: normalizedMessage,
+                agentId,
+              });
+              sendEvent({ type: "final_text", text: finalized.cleanText });
+              sendEvent({
+                type: "meta",
+                roadmap: finalized.roadmapPayload,
+                completedStepIds: finalized.completedStepIds,
+              });
+              sendEvent({ type: "done" });
+            } catch (streamError: unknown) {
+              console.error("Chat stream error:", streamError);
+              sendEvent({
+                type: "error",
+                message:
+                  streamError instanceof Error
+                    ? streamError.message
+                    : "Fehler bei der Kommunikation mit dem Agenten.",
+              });
+            } finally {
+              controller.close();
+            }
+          };
+
+          void run();
         },
-        ...historyWithCurrentMessage,
-      ],
+      });
+
+      return new Response(streamResponse, {
+        headers: {
+          "Content-Type": "application/x-ndjson; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+        },
+      });
+    }
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview",
+      messages: requestMessages,
     });
 
     const aiContent = response.choices[0]?.message?.content ?? "";
-
-    const courseJsonMatch = aiContent.match(
-      /COURSE_JSON_START([\s\S]*?)COURSE_JSON_END/,
-    );
-    let roadmapPayload: CourseStep[] | null = null;
-    let completedStepIds: number[] = [];
-
-    if (courseJsonMatch) {
-      try {
-        const parsedJson = JSON.parse(courseJsonMatch[1].trim()) as unknown;
-        const roadmapData = toCourseRoadmap(parsedJson);
-        roadmapPayload = roadmapData;
-
-        if (roadmapData && agentId) {
-          if (supabaseAdmin) {
-            const { error: updateError } = await supabaseAdmin
-              .from("agent_templates")
-              .update({ course_roadmap: roadmapData })
-              .eq("id", agentId);
-
-            if (updateError) {
-              console.error("Roadmap update error:", updateError);
-            }
-          } else {
-            console.warn(
-              "SUPABASE_SERVICE_ROLE_KEY missing. Roadmap update skipped.",
-            );
-          }
-        }
-      } catch (parseError: unknown) {
-        console.error("Parsing Error", parseError);
-      }
-    }
-
-    const completionMarkersFromAi = extractCompletedStepIds(aiContent);
-    const completionMarkersFromUser = inferCompletedStepIdsFromUserMessage(
-      message,
-      roadmapPayload ?? [],
-    );
-    completedStepIds = Array.from(
-      new Set([...completionMarkersFromAi, ...completionMarkersFromUser]),
-    );
-
-    if (agentId && completedStepIds.length > 0) {
-      let baseRoadmap = roadmapPayload ?? null;
-
-      if (!baseRoadmap && supabaseAdmin) {
-        const { data: agentData, error: agentLoadError } = await supabaseAdmin
-          .from("agent_templates")
-          .select("course_roadmap")
-          .eq("id", agentId)
-          .maybeSingle();
-
-        if (agentLoadError) {
-          console.error("Roadmap load error:", agentLoadError);
-        } else {
-          baseRoadmap = toCourseRoadmap(agentData?.course_roadmap) ?? null;
-        }
-      }
-
-      if (baseRoadmap && baseRoadmap.length > 0) {
-        // Requested behavior: update with agent.course_roadmap.map(...)
-        const agent = { course_roadmap: baseRoadmap };
-        const updatedRoadmap = applyCompletedStepIdsToRoadmap(
-          agent.course_roadmap,
-          completedStepIds,
-        );
-        roadmapPayload = updatedRoadmap;
-
-        if (supabaseAdmin) {
-          const { error: updateStepError } = await supabaseAdmin
-            .from("agent_templates")
-            .update({ course_roadmap: updatedRoadmap })
-            .eq("id", agentId);
-
-          if (updateStepError) {
-            console.error("Roadmap completion update error:", updateStepError);
-          }
-        } else {
-          console.warn(
-            "SUPABASE_SERVICE_ROLE_KEY missing. Completion marker persisted only in response payload.",
-          );
-        }
-      }
-    }
-
-    const cleanText = aiContent
-      .replace(/COURSE_JSON_START[\s\S]*?COURSE_JSON_END/g, "")
-      .replace(/UPDATE_STEP_\d+_COMPLETED/g, "")
-      .trim();
+    const finalized = await finalizeAiPayload({
+      aiContent,
+      userMessage: normalizedMessage,
+      agentId,
+    });
     return NextResponse.json({
-      text: cleanText,
-      roadmap: roadmapPayload,
-      completedStepIds,
+      text: finalized.cleanText,
+      roadmap: finalized.roadmapPayload,
+      completedStepIds: finalized.completedStepIds,
     });
   } catch (error: unknown) {
     console.error("Chat Error:", error);
