@@ -110,20 +110,28 @@ export async function POST(req: Request) {
     const courseJsonMatch = aiContent.match(
       /COURSE_JSON_START([\s\S]*?)COURSE_JSON_END/,
     );
+    let roadmapPayload: CourseStep[] | null = null;
 
-    if (courseJsonMatch && supabaseAdmin && agentId) {
+    if (courseJsonMatch) {
       try {
         const parsedJson = JSON.parse(courseJsonMatch[1].trim()) as unknown;
         const roadmapData = toCourseRoadmap(parsedJson);
+        roadmapPayload = roadmapData;
 
-        if (roadmapData) {
-          const { error: updateError } = await supabaseAdmin
-            .from("agent_templates")
-            .update({ course_roadmap: roadmapData })
-            .eq("id", agentId);
+        if (roadmapData && agentId) {
+          if (supabaseAdmin) {
+            const { error: updateError } = await supabaseAdmin
+              .from("agent_templates")
+              .update({ course_roadmap: roadmapData })
+              .eq("id", agentId);
 
-          if (updateError) {
-            console.error("Roadmap update error:", updateError);
+            if (updateError) {
+              console.error("Roadmap update error:", updateError);
+            }
+          } else {
+            console.warn(
+              "SUPABASE_SERVICE_ROLE_KEY missing. Roadmap update skipped.",
+            );
           }
         }
       } catch (parseError: unknown) {
@@ -132,7 +140,7 @@ export async function POST(req: Request) {
     }
 
     const cleanText = aiContent.split("COURSE_JSON_START")[0].trim();
-    return NextResponse.json({ text: cleanText });
+    return NextResponse.json({ text: cleanText, roadmap: roadmapPayload });
   } catch (error: unknown) {
     console.error("Chat Error:", error);
     return NextResponse.json({ error: "Fehler" }, { status: 500 });

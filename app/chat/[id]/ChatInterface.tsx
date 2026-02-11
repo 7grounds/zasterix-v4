@@ -171,10 +171,19 @@ export default function ChatInterface({
       const payload = (await response.json()) as {
         text?: string;
         error?: string;
+        roadmap?: CourseStep[] | null;
       };
 
       if (!response.ok) {
         throw new Error(payload.error || "Chat request failed");
+      }
+
+      if (Array.isArray(payload.roadmap) && payload.roadmap.length > 0) {
+        setAgent((previous) => ({
+          ...previous,
+          courseRoadmap: payload.roadmap ?? [],
+          course_roadmap: payload.roadmap ?? [],
+        }));
       }
 
       setMessages((previous) => [
