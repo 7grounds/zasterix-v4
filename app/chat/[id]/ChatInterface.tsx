@@ -30,6 +30,8 @@ type CourseStep = {
   id: number | string;
   title: string;
   status: string;
+  type?: string;
+  content?: string | null;
 };
 
 type ChatPayload = {
@@ -56,6 +58,8 @@ const toCourseRoadmap = (value: unknown): CourseStep[] => {
       const id = record.id;
       const title = record.title;
       const status = record.status;
+      const stepType = record.type;
+      const content = record.content;
       if (
         (typeof id !== "number" && typeof id !== "string") ||
         typeof title !== "string" ||
@@ -63,7 +67,16 @@ const toCourseRoadmap = (value: unknown): CourseStep[] => {
       ) {
         return null;
       }
-      return { id, title, status };
+      const nextStep: CourseStep = {
+        id,
+        title,
+        status,
+        content: typeof content === "string" ? content : null,
+      };
+      if (typeof stepType === "string" && stepType.trim().length > 0) {
+        nextStep.type = stepType;
+      }
+      return nextStep;
     })
     .filter((step): step is CourseStep => Boolean(step));
 };
@@ -88,9 +101,15 @@ const applyCompletedStepIds = (
 const isStartIntent = (value: string) =>
   /(start|starten|ich warte|weiter|go|los|beginnen|beginne)/i.test(value);
 
-const resolveTeachingModule = (roadmap: CourseStep[]) => {
+const resolveTeachingStep = (roadmap: CourseStep[]): CourseStep => {
   if (roadmap.length === 0) {
-    return { id: 1, title: "Einfuehrung" };
+    return {
+      id: 1,
+      title: "Einfuehrung",
+      status: "pending",
+      type: "lesson",
+      content: null,
+    };
   }
 
   const firstPending =
@@ -101,6 +120,7 @@ const resolveTeachingModule = (roadmap: CourseStep[]) => {
       : Number.parseInt(firstPending.id, 10);
 
   return {
+    ...firstPending,
     id: Number.isFinite(normalizedId) ? normalizedId : 1,
     title: firstPending.title || "Einfuehrung",
   };
@@ -363,13 +383,26 @@ export default function ChatInterface({
     const nextMessages = [...messages, userMessage];
     const hasRoadmap = activeRoadmap.length > 0;
     const shouldAutoStartModule = hasRoadmap && isStartIntent(trimmed);
-    const targetModule = resolveTeachingModule(activeRoadmap);
+    const targetStep = resolveTeachingStep(activeRoadmap);
+    const targetStepType = targetStep.type || "lesson";
+    const targetStepNeedsContent =
+      !targetStep.content || targetStep.content.trim().length === 0;
     const messageForAi = shouldAutoStartModule
-      ? `Startsignal bestaetigt. Generiere jetzt den vollen Lerninhalt fuer Modul ${targetModule.id} (${targetModule.title}) und liefere direkt die Lektion ohne Rueckfrage.`
+      ? `Startsignal bestaetigt. Starte jetzt direkt mit Modul ${targetStep.id} (${targetStep.title}) und liefere den vollen Lerninhalt ohne Rueckfrage.`
       : trimmed;
     const discipline = agent.category || "General";
     const hiddenInstruction = shouldAutoStartModule
-      ? `Generiere jetzt den vollen Text fuer Modul ${targetModule.id} (${targetModule.title}) basierend auf der Roadmap. Sei fachspezifisch fuer ${discipline}. Gib den gesamten Lerninhalt direkt im Chat aus, ohne Rueckfrage.`
+      ? targetStepNeedsContent
+        ? `Generiere basierend auf deiner discipline und dem step.title einen ausfuehrlichen Lerninhalt (mind. 300 Woerter) fuer den Typ ${targetStepType}. discipline=${discipline}; step.title=${targetStep.title}.`
+        : `Nutze den bereits vorhandenen Step-Content fuer ${targetStep.title} als Unterrichtsbasis und liefere eine zusammenhaengende, fachspezifische Lektion fuer ${discipline}.`
+      : null;
+    const autoFillStep = shouldAutoStartModule
+      ? {
+          id: targetStep.id,
+          title: targetStep.title,
+          type: targetStepType,
+          discipline,
+        }
       : null;
     const historyForApi = nextMessages.map((entry) => ({
       role: entry.role,
@@ -425,6 +458,8 @@ PFLICHTMODUS LEHRER:
           history: historyForApi,
           hiddenInstruction,
           stream: true,
+          autoFillStep,
+          roadmapSnapshot: activeRoadmap,
         }),
       });
 
@@ -531,7 +566,7 @@ PFLICHTMODUS LEHRER:
       }
 
       if (shouldAutoStartModule) {
-        await persistModuleCompletion(targetModule.id);
+        await persistModuleCompletion(targetStep.id);
       }
     } catch (error: unknown) {
       updateAssistantMessage(

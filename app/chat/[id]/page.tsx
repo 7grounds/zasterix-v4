@@ -31,6 +31,8 @@ type CourseStep = {
   id: number | string;
   title: string;
   status: string;
+  type?: string;
+  content?: string | null;
 };
 
 const normalizeLevel = (value: unknown) => {
@@ -60,6 +62,8 @@ const toCourseRoadmap = (value: unknown): CourseStep[] => {
       const id = record.id;
       const title = record.title;
       const status = record.status;
+      const stepType = record.type;
+      const content = record.content;
       if (
         (typeof id !== "number" && typeof id !== "string") ||
         typeof title !== "string" ||
@@ -67,7 +71,16 @@ const toCourseRoadmap = (value: unknown): CourseStep[] => {
       ) {
         return null;
       }
-      return { id, title, status };
+      const nextStep: CourseStep = {
+        id,
+        title,
+        status,
+        content: typeof content === "string" ? content : null,
+      };
+      if (typeof stepType === "string" && stepType.trim().length > 0) {
+        nextStep.type = stepType;
+      }
+      return nextStep;
     })
     .filter((step): step is CourseStep => Boolean(step));
 };

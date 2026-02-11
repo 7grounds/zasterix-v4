@@ -1,7 +1,7 @@
 /**
  * @MODULE_ID app.api.chat
  * @STAGE admin
- * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction", "stream"]
+ * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction", "stream", "autoFillStep", "roadmapSnapshot"]
  * @REQUIRED_TOOLS ["openai", "supabase-js"]
  */
 import { NextResponse } from "next/server";
@@ -24,11 +24,20 @@ type CourseStep = {
   id: number | string;
   title: string;
   status: "pending" | "completed" | "in_progress" | string;
+  type?: string;
+  content?: string | null;
 };
 
 type ChatHistoryEntry = {
   role: "system" | "user" | "assistant";
   content: string;
+};
+
+type AutoFillStep = {
+  id: number | string;
+  title: string;
+  type?: string;
+  discipline?: string;
 };
 
 const extractCompletedStepIds = (value: string) =>
@@ -117,6 +126,8 @@ const toCourseRoadmap = (value: unknown): CourseStep[] | null => {
       const id = record.id;
       const title = record.title;
       const status = record.status;
+      const stepType = record.type;
+      const content = record.content;
 
       if (
         (typeof id !== "number" && typeof id !== "string") ||
@@ -126,11 +137,153 @@ const toCourseRoadmap = (value: unknown): CourseStep[] | null => {
         return null;
       }
 
-      return { id, title, status };
+      const nextStep: CourseStep = {
+        id,
+        title,
+        status,
+        content: typeof content === "string" ? content : null,
+      };
+      if (typeof stepType === "string" && stepType.trim().length > 0) {
+        nextStep.type = stepType;
+      }
+      return nextStep;
     })
     .filter((step): step is CourseStep => Boolean(step));
 
   return parsed.length > 0 ? parsed : null;
+};
+
+const normalizeStepIdKey = (value: number | string) => String(value).trim();
+
+const isSameStepId = (left: number | string, right: number | string) =>
+  normalizeStepIdKey(left) === normalizeStepIdKey(right);
+
+const hasStepContent = (value: string | null | undefined) =>
+  typeof value === "string" && value.trim().length > 0;
+
+const toAutoFillStep = (value: unknown): AutoFillStep | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = record.id;
+  const title = record.title;
+  const stepType = record.type;
+  const discipline = record.discipline;
+  if ((typeof id !== "number" && typeof id !== "string") || typeof title !== "string") {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    type: typeof stepType === "string" && stepType.trim().length > 0 ? stepType : undefined,
+    discipline:
+      typeof discipline === "string" && discipline.trim().length > 0
+        ? discipline
+        : undefined,
+  };
+};
+
+const loadAgentRoadmap = async (agentId: string): Promise<CourseStep[] | null> => {
+  if (!supabaseAdmin) {
+    return null;
+  }
+
+  const { data: agentData, error: agentLoadError } = await supabaseAdmin
+    .from("agent_templates")
+    .select("course_roadmap")
+    .eq("id", agentId)
+    .maybeSingle();
+
+  if (agentLoadError) {
+    console.error("Roadmap load error:", agentLoadError);
+    return null;
+  }
+
+  return toCourseRoadmap(agentData?.course_roadmap);
+};
+
+const withUpdatedStepContent = (
+  roadmap: CourseStep[],
+  stepId: number | string,
+  content: string,
+) => {
+  let changed = false;
+  const updated = roadmap.map((step) => {
+    if (!isSameStepId(step.id, stepId)) {
+      return step;
+    }
+    changed = true;
+    return { ...step, content };
+  });
+  return changed ? updated : null;
+};
+
+const persistRoadmap = async (agentId: string, roadmap: CourseStep[]) => {
+  if (!supabaseAdmin) {
+    console.warn(
+      "SUPABASE_SERVICE_ROLE_KEY missing. Roadmap persistence skipped.",
+    );
+    return;
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from("agent_templates")
+    .update({ course_roadmap: roadmap })
+    .eq("id", agentId);
+
+  if (updateError) {
+    console.error("Roadmap persistence error:", updateError);
+  }
+};
+
+const buildAutoFillInstruction = (
+  step: Pick<CourseStep, "title" | "type">,
+  discipline: string,
+) =>
+  `Generiere basierend auf deiner discipline und dem step.title einen ausfuehrlichen Lerninhalt (mind. 300 Woerter) fuer den Typ ${
+    step.type || "lesson"
+  }. discipline=${discipline}; step.title=${step.title}. Gib ausschliesslich den Lerninhalt ohne Rueckfrage aus.`;
+
+const applyGeneratedStepContent = async ({
+  generatedText,
+  agentId,
+  targetStep,
+  roadmapCandidate,
+}: {
+  generatedText: string;
+  agentId?: string;
+  targetStep: CourseStep | null;
+  roadmapCandidate: CourseStep[] | null;
+}) => {
+  if (!targetStep || !hasStepContent(generatedText)) {
+    return roadmapCandidate;
+  }
+
+  let roadmapBase = roadmapCandidate;
+  if ((!roadmapBase || roadmapBase.length === 0) && agentId) {
+    roadmapBase = await loadAgentRoadmap(agentId);
+  }
+  if (!roadmapBase || roadmapBase.length === 0) {
+    return roadmapCandidate;
+  }
+
+  const updatedRoadmap = withUpdatedStepContent(
+    roadmapBase,
+    targetStep.id,
+    generatedText.trim(),
+  );
+  if (!updatedRoadmap) {
+    return roadmapBase;
+  }
+
+  if (agentId) {
+    await persistRoadmap(agentId, updatedRoadmap);
+  }
+
+  return updatedRoadmap;
 };
 
 const sanitizeAssistantContent = (value: string) =>
@@ -151,10 +304,12 @@ const finalizeAiPayload = async ({
   aiContent,
   userMessage,
   agentId,
+  fallbackRoadmap,
 }: {
   aiContent: string;
   userMessage: string;
   agentId?: string;
+  fallbackRoadmap?: CourseStep[] | null;
 }) => {
   const courseJsonMatch = aiContent.match(
     /COURSE_JSON_START([\s\S]*?)COURSE_JSON_END/,
@@ -198,20 +353,10 @@ const finalizeAiPayload = async ({
   );
 
   if (agentId && completedStepIds.length > 0) {
-    let baseRoadmap = roadmapPayload ?? null;
+    let baseRoadmap = roadmapPayload ?? fallbackRoadmap ?? null;
 
     if (!baseRoadmap && supabaseAdmin) {
-      const { data: agentData, error: agentLoadError } = await supabaseAdmin
-        .from("agent_templates")
-        .select("course_roadmap")
-        .eq("id", agentId)
-        .maybeSingle();
-
-      if (agentLoadError) {
-        console.error("Roadmap load error:", agentLoadError);
-      } else {
-        baseRoadmap = toCourseRoadmap(agentData?.course_roadmap) ?? null;
-      }
+      baseRoadmap = await loadAgentRoadmap(agentId);
     }
 
     if (baseRoadmap && baseRoadmap.length > 0) {
@@ -257,6 +402,8 @@ export async function POST(req: Request) {
       history,
       hiddenInstruction,
       stream,
+      autoFillStep,
+      roadmapSnapshot,
     } =
       (await req.json()) as {
       message?: string;
@@ -266,6 +413,8 @@ export async function POST(req: Request) {
       history?: ChatHistoryEntry[];
       hiddenInstruction?: string;
       stream?: boolean;
+      autoFillStep?: unknown;
+      roadmapSnapshot?: unknown;
     };
 
     if (!message || typeof message !== "string") {
@@ -293,6 +442,9 @@ export async function POST(req: Request) {
       markiere dieses Modul als erledigt und fuege in einer EIGENEN ZEILE am ENDE der Antwort EXAKT den Marker hinzu:
       UPDATE_STEP_[ID]_COMPLETED
       (Beispiel: UPDATE_STEP_2_COMPLETED)
+
+      Wenn ein VERSTECKTER UNTERRICHTSBEFEHL gesetzt ist, fuehre ihn strikt aus und priorisiere diese Anweisung.
+      Erzeuge in diesem Fall keinen COURSE_JSON-Block, ausser die versteckte Anweisung verlangt ihn explizit.
     `;
 
     const resolvedSystemPrompt =
@@ -307,6 +459,45 @@ export async function POST(req: Request) {
 
     const normalizedMessage = message.trim();
     const shouldStream = Boolean(stream);
+    const requestedAutoFillStep = toAutoFillStep(autoFillStep);
+    const snapshotRoadmap = toCourseRoadmap(roadmapSnapshot);
+    let roadmapForAutoFill = snapshotRoadmap;
+    if (requestedAutoFillStep && agentId) {
+      const dbRoadmap = await loadAgentRoadmap(agentId);
+      if (dbRoadmap && dbRoadmap.length > 0) {
+        roadmapForAutoFill = dbRoadmap;
+      }
+    }
+
+    const currentAutoFillStep = requestedAutoFillStep
+      ? roadmapForAutoFill?.find((step) => isSameStepId(step.id, requestedAutoFillStep.id))
+      : null;
+    const effectiveAutoFillStep =
+      currentAutoFillStep ??
+      (requestedAutoFillStep
+        ? {
+            id: requestedAutoFillStep.id,
+            title: requestedAutoFillStep.title,
+            status: "pending",
+            type: requestedAutoFillStep.type,
+            content: null,
+          }
+        : null);
+    const shouldGenerateAutoFillContent =
+      Boolean(effectiveAutoFillStep) && !hasStepContent(currentAutoFillStep?.content);
+    const autoFillInstruction =
+      shouldGenerateAutoFillContent && effectiveAutoFillStep
+        ? buildAutoFillInstruction(
+            {
+              title: effectiveAutoFillStep.title,
+              type: effectiveAutoFillStep.type,
+            },
+            requestedAutoFillStep?.discipline || "General",
+          )
+        : null;
+    const effectiveHiddenSystemInstruction = [hiddenSystemInstruction, autoFillInstruction]
+      .filter((value): value is string => Boolean(value && value.trim().length > 0))
+      .join("\n\n");
 
     const normalizedHistory = Array.isArray(history)
       ? history
@@ -351,8 +542,8 @@ export async function POST(req: Request) {
         content: [
           resolvedSystemPrompt,
           globalInstruction,
-          hiddenSystemInstruction
-            ? `VERSTECKTER UNTERRICHTSBEFEHL:\n${hiddenSystemInstruction}`
+          effectiveHiddenSystemInstruction
+            ? `VERSTECKTER UNTERRICHTSBEFEHL:\n${effectiveHiddenSystemInstruction}`
             : null,
         ]
           .filter(Boolean)
@@ -399,11 +590,21 @@ export async function POST(req: Request) {
                 aiContent,
                 userMessage: normalizedMessage,
                 agentId,
+                fallbackRoadmap: roadmapForAutoFill,
               });
+              const roadmapWithGeneratedContent =
+                shouldGenerateAutoFillContent && effectiveAutoFillStep
+                  ? await applyGeneratedStepContent({
+                      generatedText: finalized.cleanText,
+                      agentId,
+                      targetStep: effectiveAutoFillStep,
+                      roadmapCandidate: finalized.roadmapPayload ?? roadmapForAutoFill,
+                    })
+                  : finalized.roadmapPayload;
               sendEvent({ type: "final_text", text: finalized.cleanText });
               sendEvent({
                 type: "meta",
-                roadmap: finalized.roadmapPayload,
+                roadmap: roadmapWithGeneratedContent,
                 completedStepIds: finalized.completedStepIds,
               });
               sendEvent({ type: "done" });
@@ -444,10 +645,20 @@ export async function POST(req: Request) {
       aiContent,
       userMessage: normalizedMessage,
       agentId,
+      fallbackRoadmap: roadmapForAutoFill,
     });
+    const roadmapWithGeneratedContent =
+      shouldGenerateAutoFillContent && effectiveAutoFillStep
+        ? await applyGeneratedStepContent({
+            generatedText: finalized.cleanText,
+            agentId,
+            targetStep: effectiveAutoFillStep,
+            roadmapCandidate: finalized.roadmapPayload ?? roadmapForAutoFill,
+          })
+        : finalized.roadmapPayload;
     return NextResponse.json({
       text: finalized.cleanText,
-      roadmap: finalized.roadmapPayload,
+      roadmap: roadmapWithGeneratedContent,
       completedStepIds: finalized.completedStepIds,
     });
   } catch (error: unknown) {
