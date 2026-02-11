@@ -65,22 +65,39 @@ const normalizeAgentUpdate = (
   previous: AgentRecord,
   payload: Record<string, unknown>,
 ): AgentRecord => {
-  const nextRoadmap = toCourseRoadmap(payload.course_roadmap);
+  const hasRoadmapField = Object.prototype.hasOwnProperty.call(
+    payload,
+    "course_roadmap",
+  );
+  const hasPromptField = Object.prototype.hasOwnProperty.call(
+    payload,
+    "system_prompt",
+  );
+  const hasNameField = Object.prototype.hasOwnProperty.call(payload, "name");
+  const hasCategoryField = Object.prototype.hasOwnProperty.call(payload, "category");
+
+  const nextRoadmap = hasRoadmapField
+    ? toCourseRoadmap(payload.course_roadmap)
+    : previous.course_roadmap;
   const nextPrompt =
-    typeof payload.system_prompt === "string"
+    hasPromptField && typeof payload.system_prompt === "string"
       ? payload.system_prompt
       : previous.system_prompt;
 
   return {
     ...previous,
-    name: typeof payload.name === "string" ? payload.name : previous.name,
+    name:
+      hasNameField && typeof payload.name === "string"
+        ? payload.name
+        : previous.name,
     category:
-      typeof payload.category === "string" ? payload.category : previous.category,
+      hasCategoryField && typeof payload.category === "string"
+        ? payload.category
+        : previous.category,
     systemPrompt: nextPrompt,
     system_prompt: nextPrompt,
-    courseRoadmap: nextRoadmap.length > 0 ? nextRoadmap : previous.courseRoadmap,
-    course_roadmap:
-      nextRoadmap.length > 0 ? nextRoadmap : previous.course_roadmap,
+    courseRoadmap: nextRoadmap,
+    course_roadmap: nextRoadmap,
   };
 };
 
@@ -99,6 +116,7 @@ export default function ChatInterface({
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resettingRoadmap, setResettingRoadmap] = useState(false);
 
   const supabase = useMemo(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -137,6 +155,28 @@ export default function ChatInterface({
       agent.course_roadmap.length > 0 ? agent.course_roadmap : agent.courseRoadmap,
     [agent.courseRoadmap, agent.course_roadmap],
   );
+
+  const resetRoadmap = async () => {
+    if (!supabase || resettingRoadmap) return;
+
+    setResettingRoadmap(true);
+    const { error } = await supabase
+      .from("agent_templates")
+      .update({ course_roadmap: null })
+      .eq("id", agent.id);
+
+    if (error) {
+      console.error("Roadmap reset error:", error);
+    } else {
+      setAgent((previous) => ({
+        ...previous,
+        courseRoadmap: [],
+        course_roadmap: [],
+      }));
+    }
+
+    setResettingRoadmap(false);
+  };
 
   const send = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -228,6 +268,18 @@ export default function ChatInterface({
               <span className="text-shadow-glow text-[10px] font-black uppercase tracking-widest text-[#00a884]">
                 Kurs-Roadmap
               </span>
+              <button
+                type="button"
+                onClick={resetRoadmap}
+                disabled={resettingRoadmap}
+                className="rounded-md p-1 text-[#54656f] transition-colors hover:text-[#8696a0] disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Roadmap zuruecksetzen"
+                title="Roadmap zuruecksetzen"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <path d="M15.5 4h5v2h-2v3h-2V6h-2V4zM6 7h8l-1 13H7L6 7zm2-3h4l1 2H7l1-2z" />
+                </svg>
+              </button>
             </div>
             <div className="flex gap-1.5">
               {activeRoadmap.map((step) => (
