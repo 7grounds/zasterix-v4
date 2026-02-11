@@ -78,6 +78,27 @@ const applyCompletedStepIds = (
   });
 };
 
+const isStartIntent = (value: string) =>
+  /(start|starten|ich warte|weiter|go|los|beginnen|beginne)/i.test(value);
+
+const resolveTeachingModule = (roadmap: CourseStep[]) => {
+  if (roadmap.length === 0) {
+    return { id: 1, title: "Einfuehrung" };
+  }
+
+  const firstPending =
+    roadmap.find((step) => step.status !== "completed") ?? roadmap[0];
+  const normalizedId =
+    typeof firstPending.id === "number"
+      ? firstPending.id
+      : Number.parseInt(firstPending.id, 10);
+
+  return {
+    id: Number.isFinite(normalizedId) ? normalizedId : 1,
+    title: firstPending.title || "Einfuehrung",
+  };
+};
+
 const normalizeAgentUpdate = (
   previous: AgentRecord,
   payload: Record<string, unknown>,
@@ -221,6 +242,31 @@ export default function ChatInterface({
       content: trimmed,
     };
     const nextMessages = [...messages, userMessage];
+    const hasRoadmap = activeRoadmap.length > 0;
+    const shouldAutoStartModule = hasRoadmap && isStartIntent(trimmed);
+    const targetModule = resolveTeachingModule(activeRoadmap);
+    const messageForAi = shouldAutoStartModule
+      ? `Generiere jetzt den ausfuehrlichen Lerninhalt fuer Modul ${targetModule.id} (${targetModule.title}) basierend auf der Roadmap. Gib den kompletten Inhalt direkt als Lektion im Chat aus.`
+      : trimmed;
+    const historyForApi = nextMessages.map((entry) => ({
+      role: entry.role,
+      content: entry.content,
+    }));
+    if (historyForApi.length > 0) {
+      historyForApi[historyForApi.length - 1] = {
+        role: "user",
+        content: messageForAi,
+      };
+    }
+    const enforcedTeacherPrompt = `${
+      agent.system_prompt || agent.systemPrompt
+    }
+
+PFLICHTMODUS LEHRER:
+- Du musst in jeder Antwort eine vollstaendige Lektion liefern, nicht nur ein kurzes Update.
+- Jede Lektion muss enthalten: Lernziel, Erklaerung, Schritt-fuer-Schritt-Anleitung, Beispiel, Mini-Uebung, naechster Schritt.
+- Wenn eine Roadmap vorhanden ist, unterrichte das angeforderte Modul inhaltlich ausfuehrlich.
+- Antworte immer mit direkt nutzbarem Lerninhalt.`;
 
     setMessages(nextMessages);
     setInput("");
@@ -233,14 +279,11 @@ export default function ChatInterface({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: trimmed,
+          message: messageForAi,
           agentId: agent.id,
-          systemPrompt: agent.system_prompt || agent.systemPrompt,
+          systemPrompt: enforcedTeacherPrompt,
           agentName: agent.name,
-          history: nextMessages.map((entry) => ({
-            role: entry.role,
-            content: entry.content,
-          })),
+          history: historyForApi,
         }),
       });
 
