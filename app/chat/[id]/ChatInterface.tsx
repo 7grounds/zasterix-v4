@@ -158,6 +158,8 @@ export default function ChatInterface({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [resettingRoadmap, setResettingRoadmap] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
 
   const scrollToBottom = (behavior: "smooth" | "auto" = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
@@ -194,6 +196,37 @@ export default function ChatInterface({
       void supabase.removeChannel(channel);
     };
   }, [agent.id, supabase]);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    let isMounted = true;
+    const resolveUserContext = async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!isMounted) return;
+      const resolvedUserId = authData.user?.id ?? null;
+      setUserId(resolvedUserId);
+
+      if (!resolvedUserId) {
+        setOrganizationId(null);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", resolvedUserId)
+        .maybeSingle();
+
+      if (!isMounted) return;
+      setOrganizationId(profile?.organization_id ?? null);
+    };
+
+    void resolveUserContext();
+    return () => {
+      isMounted = false;
+    };
+  }, [supabase]);
 
   const activeRoadmap = useMemo(
     () =>
@@ -246,13 +279,17 @@ export default function ChatInterface({
     const shouldAutoStartModule = hasRoadmap && isStartIntent(trimmed);
     const targetModule = resolveTeachingModule(activeRoadmap);
     const messageForAi = shouldAutoStartModule
-      ? `Generiere jetzt den ausfuehrlichen Lerninhalt fuer Modul ${targetModule.id} (${targetModule.title}) basierend auf der Roadmap. Gib den kompletten Inhalt direkt als Lektion im Chat aus.`
+      ? `Startsignal bestaetigt. Generiere jetzt den vollen Lerninhalt fuer Modul ${targetModule.id} (${targetModule.title}) und liefere direkt die Lektion ohne Rueckfrage.`
       : trimmed;
+    const discipline = agent.category || "General";
+    const hiddenInstruction = shouldAutoStartModule
+      ? `Generiere jetzt den vollen Text fuer Modul ${targetModule.id} (${targetModule.title}) basierend auf der Roadmap. Sei fachspezifisch fuer ${discipline}. Gib den gesamten Lerninhalt direkt im Chat aus, ohne Rueckfrage.`
+      : null;
     const historyForApi = nextMessages.map((entry) => ({
       role: entry.role,
       content: entry.content,
     }));
-    if (historyForApi.length > 0) {
+    if (shouldAutoStartModule && historyForApi.length > 0) {
       historyForApi[historyForApi.length - 1] = {
         role: "user",
         content: messageForAi,
@@ -284,6 +321,7 @@ PFLICHTMODUS LEHRER:
           systemPrompt: enforcedTeacherPrompt,
           agentName: agent.name,
           history: historyForApi,
+          hiddenInstruction,
         }),
       });
 
@@ -324,6 +362,42 @@ PFLICHTMODUS LEHRER:
             course_roadmap: updatedRoadmap,
           };
         });
+      }
+
+      if (shouldAutoStartModule && supabase && userId) {
+        const progressStageId = "zasterix-teacher";
+        const progressModuleId = `${agent.id}-module-${targetModule.id}`;
+        const completedTaskId = `lesson-${targetModule.id}-completed`;
+
+        const { data: existingProgress } = await supabase
+          .from("user_progress")
+          .select("completed_tasks")
+          .eq("user_id", userId)
+          .eq("stage_id", progressStageId)
+          .eq("module_id", progressModuleId)
+          .maybeSingle();
+
+        const existingTasks = existingProgress?.completed_tasks ?? [];
+        const completedTasks = Array.from(
+          new Set([...existingTasks, completedTaskId]),
+        );
+
+        const { error: progressError } = await supabase.from("user_progress").upsert(
+          {
+            user_id: userId,
+            organization_id: organizationId,
+            stage_id: progressStageId,
+            module_id: progressModuleId,
+            completed_tasks: completedTasks,
+            is_completed: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,stage_id,module_id" },
+        );
+
+        if (progressError) {
+          console.error("user_progress update error:", progressError);
+        }
       }
 
       setMessages((previous) => [
@@ -400,7 +474,8 @@ PFLICHTMODUS LEHRER:
 
         <div
           ref={containerRef}
-          className="scrollbar-thin scrollbar-thumb-[#374045] flex flex-1 flex-col gap-6 overflow-y-auto px-4 py-6 md:px-8"
+          className="scrollbar-thin scrollbar-thumb-[#374045] flex flex-1 flex-col gap-6 overflow-y-auto px-4 pb-28 pt-6 md:px-8"
+          style={{ paddingBottom: "max(7rem, env(safe-area-inset-bottom) + 5rem)" }}
         >
           {messages.map((message) => (
             <div

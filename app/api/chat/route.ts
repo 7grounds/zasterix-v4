@@ -1,7 +1,7 @@
 /**
  * @MODULE_ID app.api.chat
  * @STAGE admin
- * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history"]
+ * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction"]
  * @REQUIRED_TOOLS ["openai", "supabase-js"]
  */
 import { NextResponse } from "next/server";
@@ -135,13 +135,14 @@ const toCourseRoadmap = (value: unknown): CourseStep[] | null => {
 
 export async function POST(req: Request) {
   try {
-    const { message, agentId, systemPrompt, agentName, history } =
+    const { message, agentId, systemPrompt, agentName, history, hiddenInstruction } =
       (await req.json()) as {
       message?: string;
       agentId?: string;
       systemPrompt?: string;
       agentName?: string;
       history?: ChatHistoryEntry[];
+      hiddenInstruction?: string;
     };
 
     if (!message || typeof message !== "string") {
@@ -176,6 +177,10 @@ export async function POST(req: Request) {
       `Du bist ein professioneller Agent der Zasterix-Organisation.${
         agentName ? ` Name: ${agentName}.` : ""
       }`;
+    const hiddenSystemInstruction =
+      typeof hiddenInstruction === "string" && hiddenInstruction.trim().length > 0
+        ? hiddenInstruction.trim()
+        : null;
 
     const normalizedMessage = message.trim();
 
@@ -221,7 +226,15 @@ export async function POST(req: Request) {
       messages: [
         {
           role: "system",
-          content: `${resolvedSystemPrompt}\n\n${globalInstruction}`,
+          content: [
+            resolvedSystemPrompt,
+            globalInstruction,
+            hiddenSystemInstruction
+              ? `VERSTECKTER UNTERRICHTSBEFEHL:\n${hiddenSystemInstruction}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
         },
         ...historyWithCurrentMessage,
       ],
