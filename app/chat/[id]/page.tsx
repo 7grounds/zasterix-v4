@@ -104,12 +104,10 @@ export default async function ZasterixChatPage({ params }: ChatPageProps) {
       </aside>
 
       <main className="relative flex h-full w-full flex-1 flex-col bg-[#0b141a]">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#222d34] bg-[#202c33] px-6">
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-50">
-            Zasterix Origo OS
-          </span>
-          <div className="h-2 w-2 rounded-full bg-[#00a884]" />
-        </header>
+        <header
+          className="h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 bg-black"
+          aria-hidden="true"
+        />
 
         <ChatInterface agent={agent} />
       </main>

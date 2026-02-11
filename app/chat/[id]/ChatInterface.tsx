@@ -122,39 +122,44 @@ export default function ChatInterface({ agent }: { agent: AgentRecord }) {
         }}
       />
 
-      <div className="scrollbar-thin scrollbar-thumb-[#374045] z-10 flex flex-1 flex-col gap-6 overflow-y-auto px-[8%] py-10">
-        {messages.map((message) => {
-          const isUser = message.role === "user";
+      <div className="scrollbar-thin scrollbar-thumb-[#374045] z-10 flex flex-1 overflow-y-auto px-4 py-6 sm:px-6 md:px-[8%]">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+          {messages.map((message) => {
+            const isUser = message.role === "user";
 
-          return (
-            <div
-              key={message.id}
-              className={`max-w-[80%] md:max-w-[65%] ${isUser ? "self-end" : "self-start"}`}
-            >
+            return (
               <div
-                className={
-                  isUser
-                    ? "rounded-2xl rounded-tr-none border border-[#056162] bg-[#056162] p-5 shadow-md"
-                    : "rounded-2xl rounded-tl-none border border-[#222d34] bg-[#202c33] p-5 shadow-md"
-                }
+                key={message.id}
+                className={`max-w-[86%] md:max-w-[65%] ${isUser ? "self-end" : "self-start"}`}
               >
-                <p className="text-[15px] leading-relaxed text-[#e9edef]">{message.content}</p>
-                {message.meta ? (
-                  <span
-                    className={`mt-2 block text-right font-mono text-[9px] uppercase text-[#8696a0] ${isUser ? "" : "text-left"}`}
-                  >
-                    {message.meta}
-                  </span>
-                ) : null}
+                <div
+                  className={
+                    isUser
+                      ? "rounded-2xl rounded-tr-none border border-[#056162] bg-[#056162] p-5 shadow-md"
+                      : "rounded-2xl rounded-tl-none border border-[#222d34] bg-[#202c33] p-5 shadow-md"
+                  }
+                >
+                  <p className="text-[15px] leading-relaxed text-[#e9edef]">{message.content}</p>
+                  {message.meta ? (
+                    <span
+                      className={`mt-2 block text-right font-mono text-[9px] uppercase text-[#8696a0] ${isUser ? "" : "text-left"}`}
+                    >
+                      {message.meta}
+                    </span>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      <footer className="z-10 flex h-24 items-center gap-4 border-t border-[#222d34] bg-[#202c33] px-8 py-4">
+      <footer
+        className="z-10 border-t border-[#222d34] bg-[#202c33] px-3 py-3 sm:px-4 md:px-8"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
         <form
-          className="flex w-full items-center gap-4"
+          className="mx-auto flex w-full max-w-5xl items-center gap-3 md:gap-4"
           onSubmit={handleSubmit}
           autoComplete="off"
         >
