@@ -1,12 +1,13 @@
 /**
  * @MODULE_ID app.chat.interface
  * @STAGE admin
- * @DATA_INPUTS ["agent", "chat_input"]
- * @REQUIRED_TOOLS ["app.api.chat"]
+ * @DATA_INPUTS ["agent", "chat_input", "course_roadmap"]
+ * @REQUIRED_TOOLS ["app.api.chat", "supabase-js"]
  */
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 type AgentRecord = {
   id: string;
@@ -14,56 +15,144 @@ type AgentRecord = {
   level: number;
   category: string;
   systemPrompt: string;
+  system_prompt: string;
+  courseRoadmap: CourseStep[];
+  course_roadmap: CourseStep[];
 };
 
 type ChatMessage = {
   id: string;
   role: "assistant" | "user";
   content: string;
-  meta?: string;
+};
+
+type CourseStep = {
+  id: number | string;
+  title: string;
+  status: string;
 };
 
 const createId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-export default function ChatInterface({ agent }: { agent: AgentRecord }) {
-  const initialMessages = useMemo<ChatMessage[]>(
-    () => [
-      {
-        id: "seed-assistant",
-        role: "assistant",
-        content: `Dunkelmodus fuer Zasterix Origo OS ist aktiv. Die Hierarchie-Ebene ${agent.level} ist zur Analyse bereit. Wie lautet der naechste Befehl?`,
-        meta: `Node: ${agent.category}`,
-      },
-      {
-        id: "seed-user",
-        role: "user",
-        content: "Initialisiere das Management-Board und bereite die Kunden-Chatboxen vor.",
-        meta: "Status: Delivered",
-      },
-    ],
-    [agent.category, agent.level],
+const toCourseRoadmap = (value: unknown): CourseStep[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+      const record = entry as Record<string, unknown>;
+      const id = record.id;
+      const title = record.title;
+      const status = record.status;
+      if (
+        (typeof id !== "number" && typeof id !== "string") ||
+        typeof title !== "string" ||
+        typeof status !== "string"
+      ) {
+        return null;
+      }
+      return { id, title, status };
+    })
+    .filter((step): step is CourseStep => Boolean(step));
+};
+
+const normalizeAgentUpdate = (
+  previous: AgentRecord,
+  payload: Record<string, unknown>,
+): AgentRecord => {
+  const nextRoadmap = toCourseRoadmap(payload.course_roadmap);
+  const nextPrompt =
+    typeof payload.system_prompt === "string"
+      ? payload.system_prompt
+      : previous.system_prompt;
+
+  return {
+    ...previous,
+    name: typeof payload.name === "string" ? payload.name : previous.name,
+    category:
+      typeof payload.category === "string" ? payload.category : previous.category,
+    systemPrompt: nextPrompt,
+    system_prompt: nextPrompt,
+    courseRoadmap: nextRoadmap.length > 0 ? nextRoadmap : previous.courseRoadmap,
+    course_roadmap:
+      nextRoadmap.length > 0 ? nextRoadmap : previous.course_roadmap,
+  };
+};
+
+export default function ChatInterface({
+  agent: initialAgent,
+}: {
+  agent: AgentRecord;
+}) {
+  const [agent, setAgent] = useState<AgentRecord>(initialAgent);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: "init-assistant",
+      role: "assistant",
+      content: `Ich bin dein ${initialAgent.name}. Wie kann ich dir heute helfen?`,
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const supabase = useMemo(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !anonKey) return null;
+    return createClient(url, anonKey);
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel(`roadmap_updates_${agent.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "agent_templates",
+          filter: `id=eq.${agent.id}`,
+        },
+        (payload) => {
+          const next = payload.new as Record<string, unknown>;
+          setAgent((prev) => normalizeAgentUpdate(prev, next));
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [agent.id, supabase]);
+
+  const activeRoadmap = useMemo(
+    () =>
+      agent.course_roadmap.length > 0 ? agent.course_roadmap : agent.courseRoadmap,
+    [agent.courseRoadmap, agent.course_roadmap],
   );
 
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
-  const [input, setInput] = useState("");
-  const [isSending, setIsSending] = useState(false);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const send = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || isSending) return;
+    if (!trimmed || loading) return;
 
-    const userMessage: ChatMessage = {
-      id: createId(),
-      role: "user",
-      content: trimmed,
-      meta: "Status: Sent",
-    };
-
-    setMessages((previous) => [...previous, userMessage]);
+    setMessages((previous) => [
+      ...previous,
+      {
+        id: createId(),
+        role: "user",
+        content: trimmed,
+      },
+    ]);
     setInput("");
-    setIsSending(true);
+    setLoading(true);
 
     try {
       const response = await fetch("/api/chat", {
@@ -73,7 +162,8 @@ export default function ChatInterface({ agent }: { agent: AgentRecord }) {
         },
         body: JSON.stringify({
           message: trimmed,
-          systemPrompt: agent.systemPrompt,
+          agentId: agent.id,
+          systemPrompt: agent.system_prompt || agent.systemPrompt,
           agentName: agent.name,
         }),
       });
@@ -87,28 +177,28 @@ export default function ChatInterface({ agent }: { agent: AgentRecord }) {
         throw new Error(payload.error || "Chat request failed");
       }
 
-      const aiMessage: ChatMessage = {
-        id: createId(),
-        role: "assistant",
-        content: payload.text?.trim() || "Keine Antwort erhalten.",
-        meta: `Node: ${agent.category}`,
-      };
-
-      setMessages((previous) => [...previous, aiMessage]);
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: createId(),
+          role: "assistant",
+          content: payload.text?.trim() || "Keine Antwort erhalten.",
+        },
+      ]);
     } catch (error: unknown) {
-      const fallbackText =
-        error instanceof Error
-          ? `Kommunikationsfehler: ${error.message}`
-          : "Kommunikationsfehler mit dem Agenten.";
-      const aiFallback: ChatMessage = {
-        id: createId(),
-        role: "assistant",
-        content: fallbackText,
-        meta: "Node: fallback",
-      };
-      setMessages((previous) => [...previous, aiFallback]);
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: createId(),
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? `Kommunikationsfehler: ${error.message}`
+              : "Kommunikationsfehler mit dem Agenten.",
+        },
+      ]);
     } finally {
-      setIsSending(false);
+      setLoading(false);
     }
   };
 
@@ -122,62 +212,70 @@ export default function ChatInterface({ agent }: { agent: AgentRecord }) {
         }}
       />
 
-      <div className="scrollbar-thin scrollbar-thumb-[#374045] z-10 flex flex-1 overflow-y-auto px-4 py-6 sm:px-6 md:px-[8%]">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-          {messages.map((message) => {
-            const isUser = message.role === "user";
-
-            return (
-              <div
-                key={message.id}
-                className={`max-w-[86%] md:max-w-[65%] ${isUser ? "self-end" : "self-start"}`}
-              >
+      <div className="z-10 flex flex-col">
+        {activeRoadmap.length > 0 ? (
+          <div className="mx-4 mt-4 rounded-xl border border-[#00a884]/30 bg-[#111b21] p-4 md:mx-8">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-shadow-glow text-[10px] font-black uppercase tracking-widest text-[#00a884]">
+                Kurs-Roadmap
+              </span>
+            </div>
+            <div className="flex gap-1.5">
+              {activeRoadmap.map((step) => (
                 <div
-                  className={
-                    isUser
-                      ? "rounded-2xl rounded-tr-none border border-[#056162] bg-[#056162] p-5 shadow-md"
-                      : "rounded-2xl rounded-tl-none border border-[#222d34] bg-[#202c33] p-5 shadow-md"
-                  }
+                  key={String(step.id)}
+                  className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#202c33]"
                 >
-                  <p className="text-[15px] leading-relaxed text-[#e9edef]">{message.content}</p>
-                  {message.meta ? (
-                    <span
-                      className={`mt-2 block text-right font-mono text-[9px] uppercase text-[#8696a0] ${isUser ? "" : "text-left"}`}
-                    >
-                      {message.meta}
-                    </span>
-                  ) : null}
+                  <div
+                    className={`h-full transition-all duration-1000 ${
+                      step.status === "completed" ? "bg-[#00a884]" : "bg-[#2a3942]"
+                    }`}
+                  />
                 </div>
-              </div>
-            );
-          })}
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="scrollbar-thin scrollbar-thumb-[#374045] flex flex-1 flex-col gap-6 overflow-y-auto px-4 py-6 md:px-8">
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className={`max-w-[80%] rounded-2xl p-4 text-sm ${
+                message.role === "assistant"
+                  ? "self-start rounded-tl-none border border-[#222d34] bg-[#202c33]"
+                  : "self-end rounded-tr-none bg-[#056162]"
+              }`}
+            >
+              {message.content}
+            </div>
+          ))}
+          {loading ? (
+            <div className="animate-pulse text-[10px] text-[#8696a0]">
+              Zasterix verarbeitet Anfrage...
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <footer
-        className="z-10 border-t border-[#222d34] bg-[#202c33] px-3 py-3 sm:px-4 md:px-8"
-        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
-      >
+      <footer className="z-10 border-t border-[#222d34] bg-[#202c33] p-6">
         <form
-          className="mx-auto flex w-full max-w-5xl items-center gap-3 md:gap-4"
-          onSubmit={handleSubmit}
+          className="flex items-center gap-4 rounded-xl border border-[#2a3942] bg-[#2a3942] px-4 py-2 transition-all focus-within:border-[#00a884]/50"
+          onSubmit={send}
           autoComplete="off"
         >
-          <div className="focus-within:border-[#00a884]/50 flex flex-1 items-center rounded-2xl border border-[#2a3942] bg-[#2a3942] px-6 py-4 transition-all">
-            <input
-              type="text"
-              placeholder={`Nachricht an ${agent.name}...`}
-              className="w-full border-none bg-transparent text-sm text-[#e9edef] outline-none placeholder-[#8696a0] focus:ring-0"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              disabled={isSending}
-            />
-          </div>
+          <input
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="Frage nach einem Kurs..."
+            className="flex-1 border-none bg-transparent text-sm text-[#e9edef] outline-none placeholder-[#8696a0] focus:ring-0"
+            disabled={loading}
+          />
           <button
             type="submit"
-            className="flex items-center justify-center rounded-2xl bg-[#00a884] p-4 text-white shadow-lg transition-all hover:bg-[#008f6f] active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Nachricht senden"
-            disabled={isSending || !input.trim()}
+            className="text-[#00a884] transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={loading || !input.trim()}
+            aria-label="Senden"
           >
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
               <path d="M1.101 21.757L23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z" />

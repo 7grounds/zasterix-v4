@@ -22,6 +22,15 @@ type AgentRecord = {
   level: number;
   category: string;
   systemPrompt: string;
+  system_prompt: string;
+  courseRoadmap: CourseStep[];
+  course_roadmap: CourseStep[];
+};
+
+type CourseStep = {
+  id: number | string;
+  title: string;
+  status: string;
 };
 
 const normalizeLevel = (value: unknown) => {
@@ -37,28 +46,64 @@ const normalizeLevel = (value: unknown) => {
   return 0;
 };
 
+const toCourseRoadmap = (value: unknown): CourseStep[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+      const record = entry as Record<string, unknown>;
+      const id = record.id;
+      const title = record.title;
+      const status = record.status;
+      if (
+        (typeof id !== "number" && typeof id !== "string") ||
+        typeof title !== "string" ||
+        typeof status !== "string"
+      ) {
+        return null;
+      }
+      return { id, title, status };
+    })
+    .filter((step): step is CourseStep => Boolean(step));
+};
+
 const toAgentRecord = (value: unknown, id: string): AgentRecord => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const fallbackPrompt =
+      "Du bist ein professioneller Agent der Zasterix-Organisation.";
     return {
       id,
       name: "Unbekannter Agent",
       level: 0,
       category: "System",
-      systemPrompt: "Du bist ein professioneller Agent der Zasterix-Organisation.",
+      systemPrompt: fallbackPrompt,
+      system_prompt: fallbackPrompt,
+      courseRoadmap: [],
+      course_roadmap: [],
     };
   }
 
   const record = value as Record<string, unknown>;
+  const systemPrompt =
+    typeof record.system_prompt === "string"
+      ? record.system_prompt
+      : "Du bist ein professioneller Agent der Zasterix-Organisation.";
+  const courseRoadmap = toCourseRoadmap(record.course_roadmap);
 
   return {
     id: typeof record.id === "string" ? record.id : id,
     name: typeof record.name === "string" ? record.name : "Unbekannter Agent",
     level: normalizeLevel(record.level),
     category: typeof record.category === "string" ? record.category : "System",
-    systemPrompt:
-      typeof record.system_prompt === "string"
-        ? record.system_prompt
-        : "Du bist ein professioneller Agent der Zasterix-Organisation.",
+    systemPrompt,
+    system_prompt: systemPrompt,
+    courseRoadmap,
+    course_roadmap: courseRoadmap,
   };
 };
 
@@ -67,12 +112,17 @@ async function getAgent(id: string): Promise<AgentRecord> {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
+    const fallbackPrompt =
+      "Du bist ein professioneller Agent der Zasterix-Organisation.";
     return {
       id,
       name: "Unbekannter Agent",
       level: 0,
       category: "System",
-      systemPrompt: "Du bist ein professioneller Agent der Zasterix-Organisation.",
+      systemPrompt: fallbackPrompt,
+      system_prompt: fallbackPrompt,
+      courseRoadmap: [],
+      course_roadmap: [],
     };
   }
 
