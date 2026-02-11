@@ -17,10 +17,10 @@ type OrigoAgent = {
   parentTemplateId: string | null;
 };
 
-const ORGANIZATION_ID =
+const ZASTERIX_ID =
   process.env.NEXT_PUBLIC_ZASTERIX_ORGANIZATION_ID ??
   process.env.ZASTERIX_ORGANIZATION_ID ??
-  "DEINE_ZASTERIX_ID";
+  "17b2f0fe-f89d-47b1-9fd4-aafe1a327388";
 
 const asObject = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -68,11 +68,11 @@ const toOrigoAgents = (rows: unknown): OrigoAgent[] => {
     .filter((agent): agent is OrigoAgent => Boolean(agent));
 };
 
-async function getOrigoBoard() {
+async function getZasterixAgents() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseAnonKey || ORGANIZATION_ID === "DEINE_ZASTERIX_ID") {
+  if (!supabaseUrl || !supabaseAnonKey) {
     return [];
   }
 
@@ -80,12 +80,12 @@ async function getOrigoBoard() {
 
   const { data: agents, error } = await supabase
     .from("agent_templates")
-    .select("id, name, level, category, parent_template_id")
-    .eq("organization_id", ORGANIZATION_ID)
+    .select("*")
+    .eq("organization_id", ZASTERIX_ID)
     .order("level", { ascending: true });
 
   if (error) {
-    console.error("Failed to load agent board", error.message);
+    console.error("Fehler beim Laden:", error);
     return [];
   }
 
@@ -93,8 +93,7 @@ async function getOrigoBoard() {
 }
 
 export default async function ManagementDashboard() {
-  const agents = await getOrigoBoard();
-  const hasOrganizationConfig = ORGANIZATION_ID !== "DEINE_ZASTERIX_ID";
+  const agents = await getZasterixAgents();
   const l1 = agents.filter((agent) => agent.level === 1);
   const l2 = agents.filter((agent) => agent.level === 2);
 
@@ -103,13 +102,6 @@ export default async function ManagementDashboard() {
       <h1 className="mb-12 text-center text-2xl font-black uppercase tracking-widest text-slate-900">
         Zasterix Management Cockpit
       </h1>
-
-      {!hasOrganizationConfig ? (
-        <p className="mx-auto mb-8 max-w-xl rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-center text-xs text-amber-800">
-          Bitte setze NEXT_PUBLIC_ZASTERIX_ORGANIZATION_ID (oder ZASTERIX_ORGANIZATION_ID),
-          damit das Agent-Board geladen werden kann.
-        </p>
-      ) : null}
 
       <div className="flex flex-col items-center gap-12">
         <div className="flex flex-col items-center">
