@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 type AgentRecord = {
@@ -123,6 +123,9 @@ export default function ChatInterface({
 }: {
   agent: AgentRecord;
 }) {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const [agent, setAgent] = useState<AgentRecord>(initialAgent);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -134,6 +137,10 @@ export default function ChatInterface({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [resettingRoadmap, setResettingRoadmap] = useState(false);
+
+  const scrollToBottom = (behavior: "smooth" | "auto" = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+  };
 
   const supabase = useMemo(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -172,6 +179,14 @@ export default function ChatInterface({
       agent.course_roadmap.length > 0 ? agent.course_roadmap : agent.courseRoadmap,
     [agent.courseRoadmap, agent.course_roadmap],
   );
+
+  useEffect(() => {
+    scrollToBottom("auto");
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom("smooth");
+  }, [messages]);
 
   const resetRoadmap = async () => {
     if (!supabase || resettingRoadmap) return;
@@ -299,9 +314,9 @@ export default function ChatInterface({
         }}
       />
 
-      <div className="z-10 flex flex-col">
+      <div className="z-10 flex min-h-0 flex-1 flex-col">
         {activeRoadmap.length > 0 ? (
-          <div className="mx-4 mt-4 rounded-xl border border-[#00a884]/30 bg-[#111b21] p-4 md:mx-8">
+          <div className="mx-4 mt-4 flex-none rounded-xl border border-[#00a884]/30 bg-[#111b21] p-4 md:mx-8">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-shadow-glow text-[10px] font-black uppercase tracking-widest text-[#00a884]">
                 Kurs-Roadmap
@@ -336,7 +351,10 @@ export default function ChatInterface({
           </div>
         ) : null}
 
-        <div className="scrollbar-thin scrollbar-thumb-[#374045] flex flex-1 flex-col gap-6 overflow-y-auto px-4 py-6 md:px-8">
+        <div
+          ref={containerRef}
+          className="scrollbar-thin scrollbar-thumb-[#374045] flex flex-1 flex-col gap-6 overflow-y-auto px-4 py-6 md:px-8"
+        >
           {messages.map((message) => (
             <div
               key={message.id}
@@ -354,10 +372,11 @@ export default function ChatInterface({
               Zasterix verarbeitet Anfrage...
             </div>
           ) : null}
+          <div ref={messagesEndRef} className="h-0" />
         </div>
       </div>
 
-      <footer className="z-10 border-t border-[#222d34] bg-[#202c33] p-6">
+      <footer className="z-10 flex-none border-t border-[#222d34] bg-[#202c33] p-6">
         <form
           className="flex items-center gap-4 rounded-xl border border-[#2a3942] bg-[#2a3942] px-4 py-2 transition-all focus-within:border-[#00a884]/50"
           onSubmit={send}
