@@ -2,11 +2,10 @@
  * @MODULE_ID shared.components.app-shell
  * @STAGE global
  * @DATA_INPUTS ["children"]
- * @REQUIRED_TOOLS ["TaskProgressBar", "ToolboxSidebar"]
+ * @REQUIRED_TOOLS ["TaskProgressBar"]
  */
 import type { ReactNode } from "react";
 import { TaskProgressBar } from "@/shared/components/TaskProgressBar";
-import { ToolboxSidebar } from "@/shared/components/ToolboxSidebar";
 
 type AppShellProps = {
   children: ReactNode;
@@ -33,10 +32,7 @@ export const AppShell = ({ children }: AppShellProps) => {
           <TaskProgressBar />
         </header>
 
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <main className="space-y-10">{children}</main>
-          <ToolboxSidebar />
-        </div>
+        <main className="space-y-10">{children}</main>
       </div>
     </div>
   );
