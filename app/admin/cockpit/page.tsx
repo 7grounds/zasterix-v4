@@ -1,262 +1,161 @@
 /**
  * @MODULE_ID app.admin.cockpit
  * @STAGE admin
- * @DATA_INPUTS ["registrar_log", "billing_logs"]
- * @REQUIRED_TOOLS ["supabase", "logManagementProtocol", "EXECUTIVE_APPROVAL_TOKEN"]
+ * @DATA_INPUTS ["agent_templates"]
+ * @REQUIRED_TOOLS ["supabase-js"]
  */
-"use client";
+import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
 
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/core/supabase";
-import type { Database } from "@/core/types/database.types";
-import { logManagementProtocol } from "@/core/agent-factory";
-import { EXECUTIVE_APPROVAL_TOKEN } from "@/core/governance";
-import { useTenant } from "@/core/tenant-context";
+export const dynamic = "force-dynamic";
 
-export const dynamic = 'force-dynamic';
-
-type RegistrarLog = Database["public"]["Tables"]["universal_history"]["Row"];
-type BillingLog = Database["public"]["Tables"]["billing_logs"]["Row"];
-
-const formatTimestamp = (value: string | null) => {
-  if (!value) return "--";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "--";
-  return parsed.toLocaleString("de-CH", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+type OrigoAgent = {
+  id: string;
+  name: string;
+  level: number;
+  category: string | null;
+  parentTemplateId: string | null;
 };
 
-const AdminCockpitPage = () => {
-  const { organization } = useTenant();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [registrarLogs, setRegistrarLogs] = useState<RegistrarLog[]>([]);
-  const [billingLogs, setBillingLogs] = useState<BillingLog[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [actionStatus, setActionStatus] = useState<string | null>(null);
+const ORGANIZATION_ID =
+  process.env.NEXT_PUBLIC_ZASTERIX_ORGANIZATION_ID ??
+  process.env.ZASTERIX_ORGANIZATION_ID ??
+  "DEINE_ZASTERIX_ID";
 
-  useEffect(() => {
-    let isMounted = true;
+const asObject = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+};
 
-    const resolveUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!isMounted) return;
-      setIsAdmin(data.user?.email === "test@zasterix.ch");
-    };
+const normalizeLevel = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return 0;
+};
 
-    resolveUser();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadData = async () => {
-      if (!organization?.id) {
-        setRegistrarLogs([]);
-        setBillingLogs([]);
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      const { data: logs } = await supabase
-        .from("universal_history")
-        .select("id, payload, created_at")
-        .eq("organization_id", organization.id)
-        .eq("payload->>type", "registrar_log")
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      const { data: costs } = await supabase
-        .from("billing_logs")
-        .select("provider, cost_usd, cost_chf, created_at")
-        .eq("organization_id", organization.id)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (!isMounted) return;
-      setRegistrarLogs((logs ?? []) as RegistrarLog[]);
-      setBillingLogs((costs ?? []) as BillingLog[]);
-      setIsLoading(false);
-    };
-
-    loadData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [organization?.id]);
-
-  const resourceSummary = useMemo(() => {
-    const totalUsd = billingLogs.reduce(
-      (acc, log) => acc + (log.cost_usd ?? 0),
-      0,
-    );
-    const totalChf = billingLogs.reduce(
-      (acc, log) => acc + (log.cost_chf ?? 0),
-      0,
-    );
-    const provider = process.env.NEXT_PUBLIC_AI_PRIMARY_PROVIDER ?? "unknown";
-
-    return {
-      totalUsd,
-      totalChf,
-      provider,
-    };
-  }, [billingLogs]);
-
-  const handleExecutiveAction = async () => {
-    if (!organization?.id) return;
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) return;
-
-    setActionStatus("Freigabe wird protokolliert...");
-    await logManagementProtocol({
-      userId: data.user.id,
-      organizationId: organization.id,
-      agentName: "Master-Manager",
-      summary: "Executive approval issued.",
-      details: "Owner approved the latest management decisions.",
-      executiveApproval: EXECUTIVE_APPROVAL_TOKEN,
-    });
-    setActionStatus("Executive Freigabe protokolliert.");
-    window.setTimeout(() => setActionStatus(null), 3000);
-  };
-
-  if (!isAdmin) {
-    return (
-      <div className="rounded-3xl border border-slate-800/70 bg-slate-950 px-8 py-8 text-slate-100 shadow-[0_20px_55px_rgba(15,23,42,0.4)]">
-        <p className="text-sm text-slate-400">
-          Zugriff verweigert. Dieser Bereich ist nur für Owner/Admins sichtbar.
-        </p>
-      </div>
-    );
+const toOrigoAgents = (rows: unknown): OrigoAgent[] => {
+  if (!Array.isArray(rows)) {
+    return [];
   }
 
-  return (
-    <div className="space-y-8">
-      <section className="rounded-3xl border border-slate-800/70 bg-slate-950 px-8 py-8 text-slate-100 shadow-[0_20px_55px_rgba(15,23,42,0.4)]">
-        <div className="flex flex-wrap items-center justify-between gap-4 text-xs uppercase tracking-[0.3em] text-slate-400">
-          <span>Executive Command Center</span>
-          <span>Boardroom Seat</span>
-        </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-[2fr_1fr]">
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 px-4 py-4">
-            <p className="text-xs uppercase tracking-[0.24em] text-emerald-300">
-              Registrar-Feed
-            </p>
-            <div className="mt-4 space-y-3">
-              {isLoading ? (
-                <p className="text-sm text-slate-400">Loading logs...</p>
-              ) : registrarLogs.length === 0 ? (
-                <p className="text-sm text-slate-400">
-                  Keine Protokolle verfügbar.
-                </p>
-              ) : (
-                registrarLogs.map((log) => {
-                  const payload = log.payload as Record<string, unknown> | null;
-                  const decisions = Array.isArray(payload?.decisions)
-                    ? payload?.decisions
-                    : [];
-                  const openTasks = Array.isArray(payload?.open_tasks)
-                    ? payload?.open_tasks
-                    : [];
-                  const flowStatus =
-                    typeof payload?.flow_status === "string"
-                      ? payload?.flow_status
-                      : "unknown";
+  return rows
+    .map((row) => {
+      const record = asObject(row);
+      const id = typeof record?.id === "string" ? record.id : null;
+      const name = typeof record?.name === "string" ? record.name : null;
+      if (!id || !name) return null;
 
-                  return (
-                    <div
-                      key={log.id}
-                      className="rounded-2xl border border-slate-800/80 bg-slate-950/70 px-4 py-3 text-xs text-slate-300"
-                    >
-                      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-slate-500">
-                        <span>Flow: {flowStatus}</span>
-                        <span>{formatTimestamp(log.created_at)}</span>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <div>
-                          <p className="text-[10px] uppercase tracking-[0.2em] text-emerald-300">
-                            Entscheidungen
-                          </p>
-                          <ul className="mt-1 list-disc space-y-1 pl-4">
-                            {decisions.length ? (
-                              decisions.map((item, index) => (
-                                <li key={`decision-${index}`}>{String(item)}</li>
-                              ))
-                            ) : (
-                              <li>Keine Entscheidungen gemeldet.</li>
-                            )}
-                          </ul>
-                        </div>
-                        <div>
-                          <p className="text-[10px] uppercase tracking-[0.2em] text-emerald-300">
-                            Offene Aufgaben
-                          </p>
-                          <ul className="mt-1 list-disc space-y-1 pl-4">
-                            {openTasks.length ? (
-                              openTasks.map((item, index) => (
-                                <li key={`task-${index}`}>{String(item)}</li>
-                              ))
-                            ) : (
-                              <li>Keine offenen Aufgaben.</li>
-                            )}
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 px-4 py-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-emerald-300">
-                Resource-Controller
-              </p>
-              <p className="mt-3 text-sm text-slate-300">
-                Brain-Provider: {resourceSummary.provider}
-              </p>
-              <p className="mt-2 text-xs uppercase tracking-[0.2em] text-slate-400">
-                Kosten (USD): {resourceSummary.totalUsd.toFixed(2)}
-              </p>
-              <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">
-                Kosten (CHF): {resourceSummary.totalChf.toFixed(2)}
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-4 text-sm text-emerald-200">
-              <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">
-                Executive Action
-              </p>
-              <button
-                className="mt-3 w-full rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-900 hover:bg-emerald-400"
-                type="button"
-                onClick={handleExecutiveAction}
-              >
-                Freigabe erteilen
-              </button>
-              {actionStatus ? (
-                <p className="mt-3 text-xs uppercase tracking-[0.2em] text-emerald-200">
-                  {actionStatus}
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
+      return {
+        id,
+        name,
+        level: normalizeLevel(record?.level),
+        category: typeof record?.category === "string" ? record.category : null,
+        parentTemplateId:
+          typeof record?.parent_template_id === "string"
+            ? record.parent_template_id
+            : null,
+      };
+    })
+    .filter((agent): agent is OrigoAgent => Boolean(agent));
 };
 
-export default AdminCockpitPage;
+async function getOrigoBoard() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey || ORGANIZATION_ID === "DEINE_ZASTERIX_ID") {
+    return [];
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+  const { data: agents, error } = await supabase
+    .from("agent_templates")
+    .select("id, name, level, category, parent_template_id")
+    .eq("organization_id", ORGANIZATION_ID)
+    .order("level", { ascending: true });
+
+  if (error) {
+    console.error("Failed to load agent board", error.message);
+    return [];
+  }
+
+  return toOrigoAgents(agents);
+}
+
+export default async function ManagementDashboard() {
+  const agents = await getOrigoBoard();
+  const hasOrganizationConfig = ORGANIZATION_ID !== "DEINE_ZASTERIX_ID";
+  const l1 = agents.filter((agent) => agent.level === 1);
+  const l2 = agents.filter((agent) => agent.level === 2);
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-10 font-sans">
+      <h1 className="mb-12 text-center text-2xl font-black uppercase tracking-widest text-slate-900">
+        Zasterix Management Cockpit
+      </h1>
+
+      {!hasOrganizationConfig ? (
+        <p className="mx-auto mb-8 max-w-xl rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-center text-xs text-amber-800">
+          Bitte setze NEXT_PUBLIC_ZASTERIX_ORGANIZATION_ID (oder ZASTERIX_ORGANIZATION_ID),
+          damit das Agent-Board geladen werden kann.
+        </p>
+      ) : null}
+
+      <div className="flex flex-col items-center gap-12">
+        <div className="flex flex-col items-center">
+          {l1.map((agent) => (
+            <AgentCard key={agent.id} agent={agent} color="bg-black text-white" />
+          ))}
+          <div className="h-12 w-px bg-slate-300" />
+        </div>
+
+        <div className="relative flex justify-center gap-8">
+          <div className="absolute -top-6 left-0 right-0 h-px bg-slate-300" />
+          {l2.map((agent) => (
+            <div key={agent.id} className="flex flex-col items-center">
+              <div className="h-6 w-px bg-slate-300" />
+              <AgentCard agent={agent} color="border-2 border-slate-800 bg-white" />
+
+              <div className="mt-6 space-y-2">
+                {agents
+                  .filter((subAgent) => subAgent.parentTemplateId === agent.id)
+                  .map((subAgent) => (
+                    <Link href={`/chat/${subAgent.id}`} key={subAgent.id}>
+                      <div className="w-32 cursor-pointer rounded bg-slate-200 p-2 text-center text-[10px] transition-colors hover:bg-blue-500 hover:text-white">
+                        {subAgent.name}
+                      </div>
+                    </Link>
+                  ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgentCard({ agent, color }: { agent: OrigoAgent; color: string }) {
+  return (
+    <Link href={`/chat/${agent.id}`}>
+      <div
+        className={`${color} w-56 cursor-pointer p-5 text-center shadow-lg transition-transform hover:scale-105`}
+      >
+        <p className="text-[9px] font-mono opacity-60">LEVEL 0{agent.level}</p>
+        <h3 className="text-sm font-bold">{agent.name}</h3>
+        <p className="mt-1 text-[10px] italic">{agent.category ?? "uncategorized"}</p>
+        <div className="mt-3 text-[10px] underline">Chat oeffnen -&gt;</div>
+      </div>
+    </Link>
+  );
+}
