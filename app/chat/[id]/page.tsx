@@ -120,22 +120,29 @@ export default async function ZasterixChatPage({ params }: ChatPageProps) {
           }}
         />
 
-        <header className="z-10 flex h-16 items-center justify-between border-b border-[#222d34] bg-[#202c33] px-8 shadow-lg">
+        <header className="z-10 flex h-16 items-center justify-between border-b border-[#222d34] bg-[#202c33] px-8 shadow-md">
           <div className="flex items-center gap-4">
             <div
-              className={`h-10 w-10 rounded-full ${agentBadgeColor} flex items-center justify-center text-xs font-bold ${agent.level === 1 ? "shadow-[0_0_15px_rgba(255,255,255,0.2)]" : ""}`}
+              className={`h-10 w-10 rounded-full ${
+                agent.level === 1 ? "bg-white text-black" : "bg-[#00a884] text-white"
+              } flex items-center justify-center text-xs font-bold`}
             >
               L{agent.level}
             </div>
             <div>
-              <h1 className="text-lg font-bold leading-tight text-[#e9edef]">{agent.name}</h1>
+              <h1 className="text-base font-bold leading-tight text-[#e9edef]">{agent.name}</h1>
               <div className="flex items-center gap-2">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-[#00a884]" />
-                <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#8696a0]">
-                  System Online
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#00a884]" />
+                <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#8696a0]">
+                  Zasterix
                 </p>
               </div>
             </div>
+          </div>
+          <div className="hidden md:block">
+            <p className="select-none text-[10px] font-light uppercase tracking-[0.4em] text-[#54656f]">
+              Origo OS
+            </p>
           </div>
         </header>
 
