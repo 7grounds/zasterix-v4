@@ -15,6 +15,8 @@ type ProductAgent = {
   id: string;
   name: string;
   description: string | null;
+  category: string | null;
+  organizationId: string | null;
 };
 
 type Discipline = {
@@ -47,6 +49,9 @@ const toProductAgents = (rows: unknown): ProductAgent[] => {
         name,
         description:
           typeof record.description === "string" ? record.description : null,
+        category: typeof record.category === "string" ? record.category : null,
+        organizationId:
+          typeof record.organization_id === "string" ? record.organization_id : null,
       };
     })
     .filter((entry): entry is ProductAgent => Boolean(entry));
@@ -55,6 +60,26 @@ const toProductAgents = (rows: unknown): ProductAgent[] => {
 const includesAny = (name: string, needles: string[]) => {
   const lowercase = name.toLowerCase();
   return needles.some((needle) => lowercase.includes(needle.toLowerCase()));
+};
+
+const isTeacherAgent = (agent: ProductAgent) => {
+  const haystack = `${agent.name} ${agent.description ?? ""} ${agent.category ?? ""}`
+    .toLowerCase()
+    .replace(/[_-]/g, " ");
+
+  return includesAny(haystack, [
+    "teacher",
+    "product teacher",
+    "tutor",
+    "coach",
+    "mentor",
+    "english",
+    "ghostwriter",
+    "python",
+    "architect",
+    "auditor",
+    "controller",
+  ]);
 };
 
 const buildDisciplines = (products: ProductAgent[]): Discipline[] => [
@@ -76,6 +101,15 @@ const buildDisciplines = (products: ProductAgent[]): Discipline[] => [
       includesAny(product.name, ["Auditor", "Controller"]),
     ),
   },
+  {
+    name: "Specialized Teachers",
+    items: products.filter(
+      (product) =>
+        !includesAny(product.name, ["English", "Ghostwriter"]) &&
+        !includesAny(product.name, ["Python", "Architect"]) &&
+        !includesAny(product.name, ["Auditor", "Controller"]),
+    ),
+  },
 ];
 
 async function getZasterixProducts() {
@@ -90,9 +124,8 @@ async function getZasterixProducts() {
 
   const { data, error } = await supabase
     .from("agent_templates")
-    .select("id, name, description")
-    .eq("organization_id", ZASTERIX_ID)
-    .eq("category", "Product_Teacher")
+    .select("id, name, description, category, organization_id")
+    .or(`organization_id.eq.${ZASTERIX_ID},organization_id.is.null`)
     .order("name", { ascending: true });
 
   if (error) {
@@ -100,7 +133,9 @@ async function getZasterixProducts() {
     return [];
   }
 
-  return toProductAgents(data);
+  const agents = toProductAgents(data);
+  const teacherAgents = agents.filter(isTeacherAgent);
+  return teacherAgents.length > 0 ? teacherAgents : agents;
 }
 
 export default async function ZasterixShowroom() {
