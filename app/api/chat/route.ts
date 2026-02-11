@@ -26,6 +26,80 @@ type CourseStep = {
   status: "pending" | "completed" | "in_progress" | string;
 };
 
+const extractCompletedStepIds = (value: string) =>
+  Array.from(value.matchAll(/UPDATE_STEP_(\d+)_COMPLETED/g), (match) =>
+    Number.parseInt(match[1], 10),
+  ).filter((id) => Number.isFinite(id));
+
+const inferCompletedStepIdsFromUserMessage = (
+  userMessage: string,
+  roadmap: CourseStep[],
+) => {
+  const completionIntentRegex =
+    /(beherrsch|verstanden|abgeschlossen|fertig|done|completed|mastered|geschafft)/i;
+  if (!completionIntentRegex.test(userMessage)) {
+    return [] as number[];
+  }
+
+  const directIds = Array.from(
+    userMessage.matchAll(/(?:modul|module|schritt|step)\s*(\d+)/gi),
+    (match) => Number.parseInt(match[1], 10),
+  ).filter((id) => Number.isFinite(id));
+
+  if (directIds.length > 0) {
+    return directIds;
+  }
+
+  const lowercase = userMessage.toLowerCase();
+  const fallbackMap: Record<string, number> = {
+    erstes: 1,
+    erste: 1,
+    zweites: 2,
+    zweite: 2,
+    drittes: 3,
+    dritte: 3,
+    viertes: 4,
+    vierte: 4,
+    fuenftes: 5,
+    fuenfte: 5,
+    fünftes: 5,
+    fünfte: 5,
+  };
+
+  const inferred = Object.entries(fallbackMap)
+    .filter(([token]) => lowercase.includes(token))
+    .map(([, id]) => id);
+
+  if (inferred.length === 0) {
+    return [];
+  }
+
+  const knownIds = roadmap
+    .map((step) =>
+      typeof step.id === "number" ? step.id : Number.parseInt(step.id, 10),
+    )
+    .filter((id) => Number.isFinite(id));
+
+  return inferred.filter((id) => (knownIds.length ? knownIds.includes(id) : true));
+};
+
+const applyCompletedStepIdsToRoadmap = (
+  roadmap: CourseStep[],
+  completedStepIds: number[],
+) => {
+  if (completedStepIds.length === 0) {
+    return roadmap;
+  }
+
+  return roadmap.map((step) => {
+    const stepId = typeof step.id === "number" ? step.id : Number.parseInt(step.id, 10);
+    if (Number.isFinite(stepId) && completedStepIds.includes(stepId)) {
+      return { ...step, status: "completed" as const };
+    }
+    return step;
+  });
+};
+
 const toCourseRoadmap = (value: unknown): CourseStep[] | null => {
   if (!Array.isArray(value)) return null;
 
@@ -85,7 +159,7 @@ export async function POST(req: Request) {
       COURSE_JSON_END
 
       WICHTIG: Wenn der Nutzer zeigt, dass er ein bestimmtes Modul beherrscht oder abgeschlossen hat,
-      markiere dieses Modul als erledigt und fuege am ENDE der Antwort EXAKT den Marker hinzu:
+      markiere dieses Modul als erledigt und fuege in einer EIGENEN ZEILE am ENDE der Antwort EXAKT den Marker hinzu:
       UPDATE_STEP_[ID]_COMPLETED
       (Beispiel: UPDATE_STEP_2_COMPLETED)
     `;
@@ -112,8 +186,11 @@ export async function POST(req: Request) {
 
     const aiContent = response.choices[0]?.message?.content ?? "";
 
-    const courseJsonMatch = aiContent.match(/COURSE_JSON_START([\s\S]*?)COURSE_JSON_END/);
+    const courseJsonMatch = aiContent.match(
+      /COURSE_JSON_START([\s\S]*?)COURSE_JSON_END/,
+    );
     let roadmapPayload: CourseStep[] | null = null;
+    let completedStepIds: number[] = [];
 
     if (courseJsonMatch) {
       try {
@@ -142,36 +219,42 @@ export async function POST(req: Request) {
       }
     }
 
-    const completedStepIds = Array.from(
-      aiContent.matchAll(/UPDATE_STEP_(\d+)_COMPLETED/g),
-      (match) => Number(match[1]),
-    ).filter((id) => Number.isFinite(id));
+    const completionMarkersFromAi = extractCompletedStepIds(aiContent);
+    const completionMarkersFromUser = inferCompletedStepIdsFromUserMessage(
+      message,
+      roadmapPayload ?? [],
+    );
+    completedStepIds = Array.from(
+      new Set([...completionMarkersFromAi, ...completionMarkersFromUser]),
+    );
 
-    if (completedStepIds.length > 0 && agentId) {
-      if (supabaseAdmin) {
-        const { data: agentData, error: agentError } = await supabaseAdmin
+    if (agentId && completedStepIds.length > 0) {
+      let baseRoadmap = roadmapPayload ?? null;
+
+      if (!baseRoadmap && supabaseAdmin) {
+        const { data: agentData, error: agentLoadError } = await supabaseAdmin
           .from("agent_templates")
           .select("course_roadmap")
           .eq("id", agentId)
           .maybeSingle();
 
-        if (agentError) {
-          console.error("Roadmap load error:", agentError);
-        } else if (agentData) {
-          const agent = {
-            course_roadmap: toCourseRoadmap(agentData.course_roadmap) ?? [],
-          };
+        if (agentLoadError) {
+          console.error("Roadmap load error:", agentLoadError);
+        } else {
+          baseRoadmap = toCourseRoadmap(agentData?.course_roadmap) ?? null;
+        }
+      }
 
-          // Requested behavior: update with agent.course_roadmap.map(...)
-          const updatedRoadmap = agent.course_roadmap.map((step) => {
-            const stepId =
-              typeof step.id === "number" ? step.id : Number.parseInt(step.id, 10);
-            if (Number.isFinite(stepId) && completedStepIds.includes(stepId)) {
-              return { ...step, status: "completed" as const };
-            }
-            return step;
-          });
+      if (baseRoadmap && baseRoadmap.length > 0) {
+        // Requested behavior: update with agent.course_roadmap.map(...)
+        const agent = { course_roadmap: baseRoadmap };
+        const updatedRoadmap = applyCompletedStepIdsToRoadmap(
+          agent.course_roadmap,
+          completedStepIds,
+        );
+        roadmapPayload = updatedRoadmap;
 
+        if (supabaseAdmin) {
           const { error: updateStepError } = await supabaseAdmin
             .from("agent_templates")
             .update({ course_roadmap: updatedRoadmap })
@@ -179,14 +262,12 @@ export async function POST(req: Request) {
 
           if (updateStepError) {
             console.error("Roadmap completion update error:", updateStepError);
-          } else if (updatedRoadmap.length > 0) {
-            roadmapPayload = updatedRoadmap;
           }
+        } else {
+          console.warn(
+            "SUPABASE_SERVICE_ROLE_KEY missing. Completion marker persisted only in response payload.",
+          );
         }
-      } else {
-        console.warn(
-          "SUPABASE_SERVICE_ROLE_KEY missing. Completion marker update skipped.",
-        );
       }
     }
 
@@ -194,7 +275,11 @@ export async function POST(req: Request) {
       .replace(/COURSE_JSON_START[\s\S]*?COURSE_JSON_END/g, "")
       .replace(/UPDATE_STEP_\d+_COMPLETED/g, "")
       .trim();
-    return NextResponse.json({ text: cleanText, roadmap: roadmapPayload });
+    return NextResponse.json({
+      text: cleanText,
+      roadmap: roadmapPayload,
+      completedStepIds,
+    });
   } catch (error: unknown) {
     console.error("Chat Error:", error);
     return NextResponse.json({ error: "Fehler" }, { status: 500 });

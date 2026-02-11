@@ -61,6 +61,23 @@ const toCourseRoadmap = (value: unknown): CourseStep[] => {
     .filter((step): step is CourseStep => Boolean(step));
 };
 
+const applyCompletedStepIds = (
+  roadmap: CourseStep[],
+  completedStepIds: number[],
+): CourseStep[] => {
+  if (completedStepIds.length === 0 || roadmap.length === 0) {
+    return roadmap;
+  }
+
+  return roadmap.map((step) => {
+    const stepId = typeof step.id === "number" ? step.id : Number.parseInt(step.id, 10);
+    if (Number.isFinite(stepId) && completedStepIds.includes(stepId)) {
+      return { ...step, status: "completed" };
+    }
+    return step;
+  });
+};
+
 const normalizeAgentUpdate = (
   previous: AgentRecord,
   payload: Record<string, unknown>,
@@ -212,6 +229,7 @@ export default function ChatInterface({
         text?: string;
         error?: string;
         roadmap?: CourseStep[] | null;
+        completedStepIds?: number[];
       };
 
       if (!response.ok) {
@@ -224,6 +242,26 @@ export default function ChatInterface({
           courseRoadmap: payload.roadmap ?? [],
           course_roadmap: payload.roadmap ?? [],
         }));
+      } else if (
+        Array.isArray(payload.completedStepIds) &&
+        payload.completedStepIds.length > 0
+      ) {
+        setAgent((previous) => {
+          const baseRoadmap =
+            previous.course_roadmap.length > 0
+              ? previous.course_roadmap
+              : previous.courseRoadmap;
+          const updatedRoadmap = applyCompletedStepIds(
+            baseRoadmap,
+            payload.completedStepIds ?? [],
+          );
+
+          return {
+            ...previous,
+            courseRoadmap: updatedRoadmap,
+            course_roadmap: updatedRoadmap,
+          };
+        });
       }
 
       setMessages((previous) => [
