@@ -215,14 +215,14 @@ export default function ChatInterface({
     const trimmed = input.trim();
     if (!trimmed || loading) return;
 
-    setMessages((previous) => [
-      ...previous,
-      {
-        id: createId(),
-        role: "user",
-        content: trimmed,
-      },
-    ]);
+    const userMessage: ChatMessage = {
+      id: createId(),
+      role: "user",
+      content: trimmed,
+    };
+    const nextMessages = [...messages, userMessage];
+
+    setMessages(nextMessages);
     setInput("");
     setLoading(true);
 
@@ -237,6 +237,10 @@ export default function ChatInterface({
           agentId: agent.id,
           systemPrompt: agent.system_prompt || agent.systemPrompt,
           agentName: agent.name,
+          history: nextMessages.map((entry) => ({
+            role: entry.role,
+            content: entry.content,
+          })),
         }),
       });
 

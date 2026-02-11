@@ -1,7 +1,7 @@
 /**
  * @MODULE_ID app.api.chat
  * @STAGE admin
- * @DATA_INPUTS ["message", "agentId", "systemPrompt"]
+ * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history"]
  * @REQUIRED_TOOLS ["openai", "supabase-js"]
  */
 import { NextResponse } from "next/server";
@@ -24,6 +24,11 @@ type CourseStep = {
   id: number | string;
   title: string;
   status: "pending" | "completed" | "in_progress" | string;
+};
+
+type ChatHistoryEntry = {
+  role: "system" | "user" | "assistant";
+  content: string;
 };
 
 const extractCompletedStepIds = (value: string) =>
@@ -130,11 +135,13 @@ const toCourseRoadmap = (value: unknown): CourseStep[] | null => {
 
 export async function POST(req: Request) {
   try {
-    const { message, agentId, systemPrompt, agentName } = (await req.json()) as {
+    const { message, agentId, systemPrompt, agentName, history } =
+      (await req.json()) as {
       message?: string;
       agentId?: string;
       systemPrompt?: string;
       agentName?: string;
+      history?: ChatHistoryEntry[];
     };
 
     if (!message || typeof message !== "string") {
@@ -170,6 +177,45 @@ export async function POST(req: Request) {
         agentName ? ` Name: ${agentName}.` : ""
       }`;
 
+    const normalizedMessage = message.trim();
+
+    const normalizedHistory = Array.isArray(history)
+      ? history
+          .filter(
+            (entry) =>
+              entry &&
+              (entry.role === "assistant" ||
+                entry.role === "user" ||
+                entry.role === "system") &&
+              typeof entry.content === "string" &&
+              entry.content.trim().length > 0,
+          )
+          .map((entry) => ({
+            role: entry.role,
+            content: entry.content.trim(),
+          }))
+          .slice(-12)
+      : [];
+
+    const historyWithCurrentMessage = (() => {
+      if (normalizedHistory.length === 0) {
+        return [{ role: "user" as const, content: normalizedMessage }];
+      }
+
+      const lastEntry = normalizedHistory[normalizedHistory.length - 1];
+      if (
+        lastEntry.role === "user" &&
+        lastEntry.content.toLowerCase() === normalizedMessage.toLowerCase()
+      ) {
+        return normalizedHistory;
+      }
+
+      return [
+        ...normalizedHistory,
+        { role: "user" as const, content: normalizedMessage },
+      ];
+    })();
+
     const response = await openai.chat.completions.create({
       model: "gpt-4-turbo-preview", // Oder dein bevorzugtes Modell
       messages: [
@@ -177,10 +223,7 @@ export async function POST(req: Request) {
           role: "system",
           content: `${resolvedSystemPrompt}\n\n${globalInstruction}`,
         },
-        {
-          role: "user",
-          content: message,
-        },
+        ...historyWithCurrentMessage,
       ],
     });
 
