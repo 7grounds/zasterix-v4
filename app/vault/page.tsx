@@ -16,12 +16,47 @@ const supabaseUrl =
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-const renderPayload = (payload: any) => {
-  if (!payload || typeof payload !== "object") {
+interface VaultItem {
+  id: string | number;
+  payload: Record<string, unknown> | null;
+  created_at: string | null;
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+};
+
+const toVaultItems = (rows: unknown): VaultItem[] => {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return rows.map((row, index) => {
+    const record = asRecord(row);
+    const idValue = record?.id;
+
+    return {
+      id:
+        typeof idValue === "string" || typeof idValue === "number"
+          ? idValue
+          : `row-${index}`,
+      payload: asRecord(record?.payload),
+      created_at: typeof record?.created_at === "string" ? record.created_at : null,
+    };
+  });
+};
+
+const renderPayload = (payload: unknown) => {
+  const payloadRecord = asRecord(payload);
+
+  if (!payloadRecord) {
     return <span>{String(payload ?? "--")}</span>;
   }
 
-  const entries = Object.entries(payload);
+  const entries = Object.entries(payloadRecord);
   if (entries.length === 0) {
     return <span>(empty)</span>;
   }
@@ -39,8 +74,8 @@ const renderPayload = (payload: any) => {
 };
 
 export default function VaultPage() {
-  const [history, setHistory] = useState<any[]>([]);
-  const [error, setError] = useState<any | null>(null);
+  const [history, setHistory] = useState<VaultItem[]>([]);
+  const [error, setError] = useState<unknown | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -61,7 +96,7 @@ export default function VaultPage() {
       }
 
       setError(null);
-      setHistory((data as any[]) ?? []);
+      setHistory(toVaultItems(data));
     };
 
     loadHistory();
