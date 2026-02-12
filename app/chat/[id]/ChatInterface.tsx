@@ -37,6 +37,50 @@ type AiModelConfig = {
   topP?: number;
 };
 
+const GROQ_FALLBACK_MODEL_CONFIG: AiModelConfig = {
+  provider: "groq",
+  model: "llama-3.1-8b-instant",
+  temperature: 0.2,
+};
+
+const toFiniteNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+};
+
+const toAiModelConfig = (value: unknown): AiModelConfig | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const provider = typeof record.provider === "string" ? record.provider.trim() : "";
+  const model = typeof record.model === "string" ? record.model.trim() : "";
+  if (!provider || !model) {
+    return null;
+  }
+
+  const temperature = toFiniteNumber(record.temperature);
+  const maxTokens =
+    toFiniteNumber(record.maxTokens) ?? toFiniteNumber(record.max_tokens);
+  const topP = toFiniteNumber(record.topP) ?? toFiniteNumber(record.top_p);
+
+  return {
+    provider,
+    model,
+    ...(temperature !== undefined ? { temperature } : {}),
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
+    ...(topP !== undefined ? { topP } : {}),
+  };
+};
+
 type ChatMessage = {
   id: string;
   role: "assistant" | "user";
@@ -182,8 +226,9 @@ const normalizeAgentUpdate = (
     payload.ai_model_config &&
     typeof payload.ai_model_config === "object" &&
     !Array.isArray(payload.ai_model_config)
-      ? (payload.ai_model_config as AiModelConfig)
-      : previous.ai_model_config ?? previous.aiModelConfig ?? null;
+      ? toAiModelConfig(payload.ai_model_config)
+      : toAiModelConfig(previous.ai_model_config ?? previous.aiModelConfig);
+  const safeModelConfig = nextModelConfig ?? GROQ_FALLBACK_MODEL_CONFIG;
 
   return {
     ...previous,
@@ -199,8 +244,8 @@ const normalizeAgentUpdate = (
     system_prompt: nextPrompt,
     finalSystemPrompt: nextFinalPrompt,
     final_system_prompt: nextFinalPrompt,
-    aiModelConfig: nextModelConfig,
-    ai_model_config: nextModelConfig,
+    aiModelConfig: safeModelConfig,
+    ai_model_config: safeModelConfig,
     courseRoadmap: nextRoadmap,
     course_roadmap: nextRoadmap,
   };
@@ -460,7 +505,8 @@ export default function ChatInterface({
       agent.system_prompt ||
       agent.systemPrompt;
     const resolvedModelConfig =
-      agent.ai_model_config ?? agent.aiModelConfig ?? null;
+      toAiModelConfig(agent.ai_model_config ?? agent.aiModelConfig) ??
+      GROQ_FALLBACK_MODEL_CONFIG;
     const assistantMessageId = createId();
     const updateAssistantMessage = (content: string) => {
       setMessages((previous) =>

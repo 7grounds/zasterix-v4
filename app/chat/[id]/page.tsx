@@ -43,6 +43,12 @@ type AiModelConfig = {
   topP?: number;
 };
 
+const GROQ_FALLBACK_MODEL_CONFIG: AiModelConfig = {
+  provider: "groq",
+  model: "llama-3.1-8b-instant",
+  temperature: 0.2,
+};
+
 type CourseStep = {
   id: number | string;
   title: string;
@@ -173,8 +179,8 @@ const buildFallbackAgent = (id: string): AgentRecord => {
       logic_template: "",
       finalSystemPrompt: fallbackPrompt,
       final_system_prompt: fallbackPrompt,
-      aiModelConfig: null,
-      ai_model_config: null,
+      aiModelConfig: GROQ_FALLBACK_MODEL_CONFIG,
+      ai_model_config: GROQ_FALLBACK_MODEL_CONFIG,
       courseRoadmap: [],
       course_roadmap: [],
     };
@@ -206,9 +212,9 @@ const toAgentRecord = ({
     typeof record.parent_template_id === "string"
       ? record.parent_template_id
       : null;
-  const aiModelConfig = toAiModelConfig(
-    blueprint?.ai_model_config ?? record.ai_model_config,
-  );
+  const aiModelConfig =
+    toAiModelConfig(blueprint?.ai_model_config ?? record.ai_model_config) ??
+    GROQ_FALLBACK_MODEL_CONFIG;
   const courseRoadmap = toCourseRoadmap(record.course_roadmap);
 
   return {
@@ -242,7 +248,9 @@ async function getAgent(id: string): Promise<AgentRecord> {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
   const { data, error } = await supabase
     .from("agent_templates")
-    .select("*")
+    .select(
+      "id, name, level, category, parent_template_id, system_prompt, ai_model_config, course_roadmap, organization_id",
+    )
     .eq("id", id)
     .eq("organization_id", ZASTERIX_ID)
     .maybeSingle();

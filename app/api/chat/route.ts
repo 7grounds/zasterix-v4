@@ -53,6 +53,12 @@ type AiModelConfig = {
   topP?: number;
 };
 
+const GROQ_FALLBACK_MODEL_CONFIG: AiModelConfig = {
+  provider: "groq",
+  model: "llama-3.1-8b-instant",
+  temperature: 0.2,
+};
+
 const extractCompletedStepIds = (value: string) =>
   Array.from(value.matchAll(/UPDATE_STEP_(\d+)_COMPLETED/g), (match) =>
     Number.parseInt(match[1], 10),
@@ -612,19 +618,8 @@ export async function POST(req: Request) {
 
     const requestedModelConfig = toAiModelConfig(aiModelConfig);
     const dbModelConfig = agentId ? await loadAgentModelConfig(agentId) : null;
-    if (agentId && !dbModelConfig) {
-      return NextResponse.json(
-        { error: "ai_model_config konnte nicht aus der Datenbank geladen werden." },
-        { status: 500 },
-      );
-    }
-    const resolvedModelConfig = agentId ? dbModelConfig : requestedModelConfig;
-    if (!resolvedModelConfig) {
-      return NextResponse.json(
-        { error: "ai_model_config fehlt oder ist ungueltig." },
-        { status: 500 },
-      );
-    }
+    const resolvedModelConfig =
+      dbModelConfig ?? requestedModelConfig ?? GROQ_FALLBACK_MODEL_CONFIG;
     const aiFactory = resolveModelFactory(resolvedModelConfig.provider);
     const aiModel = aiFactory(resolvedModelConfig.model);
     const generationTemperature = resolvedModelConfig.temperature ?? 0.2;
