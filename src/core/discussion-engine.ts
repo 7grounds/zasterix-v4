@@ -811,7 +811,7 @@ export const advanceDiscussion = async (
     throw new Error("Du hast dein 2-Beitraege-Limit fuer diese Runde erreicht.");
   }
 
-  const userContent = enforceThreeLines(input.message);
+  const userContent = input.message.trim();
   const savedUserEntry = await saveDiscussionEntry({
     supabase,
     projectId: input.projectId,
