@@ -5,7 +5,7 @@
  * @REQUIRED_TOOLS ["supabase-js"]
  */
 import { createClient } from "@supabase/supabase-js";
-import ChatInterface from "./ChatInterface";
+import ChatWindow from "./ChatWindow";
 
 export const dynamic = "force-dynamic";
 const ZASTERIX_ID = "17b2f0fe-f89d-47b1-9fd4-aafe1a327388";
@@ -172,7 +172,7 @@ export default async function ZasterixChatPage({ params }: ChatPageProps) {
           aria-hidden="true"
         />
 
-        <ChatInterface agent={agent} />
+        <ChatWindow agent={agent} />
       </main>
     </div>
   );
