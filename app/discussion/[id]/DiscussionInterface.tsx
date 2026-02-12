@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 type DiscussionEntry = {
@@ -90,7 +90,7 @@ export default function DiscussionInterface({ projectId }: { projectId: string }
     return createClient(url, anonKey);
   }, []);
 
-  const fetchState = async () => {
+  const fetchState = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -115,11 +115,11 @@ export default function DiscussionInterface({ projectId }: { projectId: string }
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
     void fetchState();
-  }, [projectId]);
+  }, [fetchState]);
 
   useEffect(() => {
     if (!supabase) {

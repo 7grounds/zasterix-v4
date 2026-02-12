@@ -7,6 +7,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/core/supabase";
 import type { Database } from "@/core/types/database.types";
 import { useTenant } from "@/core/tenant-context";
