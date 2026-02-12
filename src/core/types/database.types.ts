@@ -311,6 +311,50 @@ export interface Database {
         };
         Relationships: [];
       };
+      projects: {
+        Row: {
+          id: string;
+          organization_id: string | null;
+          name: string;
+          type: string;
+          status: string;
+          metadata: Json;
+          current_discussion_step: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id?: string | null;
+          name: string;
+          type?: string;
+          status?: string;
+          metadata?: Json;
+          current_discussion_step?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string | null;
+          name?: string;
+          type?: string;
+          status?: string;
+          metadata?: Json;
+          current_discussion_step?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "projects_organization_id_fkey";
+            columns: ["organization_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       user_progress: {
         Row: {
           id: string;

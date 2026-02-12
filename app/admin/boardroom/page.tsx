@@ -28,6 +28,7 @@ const BOARD_AGENTS = [
   { key: "manager", name: "Master-Manager" },
   { key: "resource", name: "Resource-Controller" },
 ];
+const DEFAULT_DISCUSSION_PROJECT_ID = "6e44f3ea-7d88-4fc8-b0ea-a1f41a7ec8df";
 
 const BoardroomPage = () => {
   const { organization } = useTenant();
@@ -136,6 +137,13 @@ const BoardroomPage = () => {
               (Backups: {backupProviders.join(", ")})
             </span>
           ) : null}
+          <span className="mx-2 text-slate-600">|</span>
+          <Link
+            href={`/discussion/${DEFAULT_DISCUSSION_PROJECT_ID}`}
+            className="text-emerald-300 hover:text-emerald-200"
+          >
+            Open Discussion Round
+          </Link>
         </div>
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {BOARD_AGENTS.map((agent) => {
