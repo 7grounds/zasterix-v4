@@ -46,6 +46,10 @@ export interface Database {
           category: string | null;
           icon: string | null;
           search_keywords: string[] | null;
+          course_roadmap: Json | null;
+          shared_logic_id: string | null;
+          spawn_metadata: Json | null;
+          produced_by: string | null;
           created_at: string | null;
         };
         Insert: {
@@ -57,6 +61,10 @@ export interface Database {
           category?: string | null;
           icon?: string | null;
           search_keywords?: string[] | null;
+          course_roadmap?: Json | null;
+          shared_logic_id?: string | null;
+          spawn_metadata?: Json | null;
+          produced_by?: string | null;
           created_at?: string | null;
         };
         Update: {
@@ -68,9 +76,59 @@ export interface Database {
           category?: string | null;
           icon?: string | null;
           search_keywords?: string[] | null;
+          course_roadmap?: Json | null;
+          shared_logic_id?: string | null;
+          spawn_metadata?: Json | null;
+          produced_by?: string | null;
           created_at?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "agent_templates_shared_logic_id_fkey";
+            columns: ["shared_logic_id"];
+            isOneToOne: false;
+            referencedRelation: "shared_logic";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      shared_logic: {
+        Row: {
+          id: string;
+          organization_id: string | null;
+          logic_key: string;
+          logic_payload: Json;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id?: string | null;
+          logic_key: string;
+          logic_payload?: Json;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string | null;
+          logic_key?: string;
+          logic_payload?: Json;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "shared_logic_organization_id_fkey";
+            columns: ["organization_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       billing_logs: {
         Row: {

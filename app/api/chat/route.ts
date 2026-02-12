@@ -247,6 +247,63 @@ const buildAutoFillInstruction = (
     step.type || "lesson"
   }. discipline=${discipline}; step.title=${step.title}. Gib ausschliesslich den Lerninhalt ohne Rueckfrage aus.`;
 
+const toSharedLogicInstruction = (
+  logicKey: string,
+  logicPayload: Record<string, unknown> | null,
+) => {
+  const standards = Array.isArray(logicPayload?.standards)
+    ? logicPayload.standards
+        .map((entry) => (typeof entry === "string" ? entry : ""))
+        .filter((entry) => entry.length > 0)
+    : [];
+  const standardsText = standards.length
+    ? standards.map((entry) => `- ${entry}`).join("\n")
+    : "- Halte Antworten minimalistisch, data-driven und standardkonform.";
+  return `SHARED_LOGIC (${logicKey})\n${standardsText}`;
+};
+
+const loadAgentSharedLogicInstruction = async (agentId: string) => {
+  if (!supabaseAdmin) {
+    return null;
+  }
+
+  const { data: agentRow, error: agentError } = await supabaseAdmin
+    .from("agent_templates")
+    .select("shared_logic_id")
+    .eq("id", agentId)
+    .maybeSingle();
+
+  if (agentError || !agentRow?.shared_logic_id) {
+    if (agentError) {
+      console.warn("Shared logic lookup skipped:", agentError.message);
+    }
+    return null;
+  }
+
+  const { data: logicRow, error: logicError } = await supabaseAdmin
+    .from("shared_logic")
+    .select("logic_key, logic_payload, is_active")
+    .eq("id", agentRow.shared_logic_id)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (logicError || !logicRow) {
+    if (logicError) {
+      console.warn("Shared logic load skipped:", logicError.message);
+    }
+    return null;
+  }
+
+  const logicPayload =
+    logicRow.logic_payload &&
+    typeof logicRow.logic_payload === "object" &&
+    !Array.isArray(logicRow.logic_payload)
+      ? (logicRow.logic_payload as Record<string, unknown>)
+      : null;
+
+  return toSharedLogicInstruction(logicRow.logic_key, logicPayload);
+};
+
 const applyGeneratedStepContent = async ({
   generatedText,
   agentId,
@@ -452,6 +509,9 @@ export async function POST(req: Request) {
       `Du bist ein professioneller Agent der Zasterix-Organisation.${
         agentName ? ` Name: ${agentName}.` : ""
       }`;
+    const sharedLogicInstruction = agentId
+      ? await loadAgentSharedLogicInstruction(agentId)
+      : null;
     const hiddenSystemInstruction =
       typeof hiddenInstruction === "string" && hiddenInstruction.trim().length > 0
         ? hiddenInstruction.trim()
@@ -541,6 +601,7 @@ export async function POST(req: Request) {
         role: "system" as const,
         content: [
           resolvedSystemPrompt,
+          sharedLogicInstruction,
           globalInstruction,
           effectiveHiddenSystemInstruction
             ? `VERSTECKTER UNTERRICHTSBEFEHL:\n${effectiveHiddenSystemInstruction}`
