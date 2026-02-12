@@ -41,6 +41,7 @@ export interface Database {
           id: string;
           name: string;
           description: string;
+          level: number | null;
           system_prompt: string;
           organization_id: string | null;
           category: string | null;
@@ -58,6 +59,7 @@ export interface Database {
           id?: string;
           name: string;
           description: string;
+          level?: number | null;
           system_prompt: string;
           organization_id?: string | null;
           category?: string | null;
@@ -75,6 +77,7 @@ export interface Database {
           id?: string;
           name?: string;
           description?: string;
+          level?: number | null;
           system_prompt?: string;
           organization_id?: string | null;
           category?: string | null;
