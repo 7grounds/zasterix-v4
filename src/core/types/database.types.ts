@@ -46,6 +46,8 @@ export interface Database {
           category: string | null;
           icon: string | null;
           search_keywords: string[] | null;
+          parent_template_id: string | null;
+          ai_model_config: Json | null;
           course_roadmap: Json | null;
           shared_logic_id: string | null;
           spawn_metadata: Json | null;
@@ -61,6 +63,8 @@ export interface Database {
           category?: string | null;
           icon?: string | null;
           search_keywords?: string[] | null;
+          parent_template_id?: string | null;
+          ai_model_config?: Json | null;
           course_roadmap?: Json | null;
           shared_logic_id?: string | null;
           spawn_metadata?: Json | null;
@@ -76,6 +80,8 @@ export interface Database {
           category?: string | null;
           icon?: string | null;
           search_keywords?: string[] | null;
+          parent_template_id?: string | null;
+          ai_model_config?: Json | null;
           course_roadmap?: Json | null;
           shared_logic_id?: string | null;
           spawn_metadata?: Json | null;
@@ -84,6 +90,13 @@ export interface Database {
         };
         Relationships: [
           {
+            foreignKeyName: "agent_templates_parent_template_id_fkey";
+            columns: ["parent_template_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_blueprints";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "agent_templates_shared_logic_id_fkey";
             columns: ["shared_logic_id"];
             isOneToOne: false;
@@ -91,6 +104,30 @@ export interface Database {
             referencedColumns: ["id"];
           },
         ];
+      };
+      agent_blueprints: {
+        Row: {
+          id: string;
+          name: string;
+          logic_template: string;
+          ai_model_config: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          logic_template?: string;
+          ai_model_config?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          logic_template?: string;
+          ai_model_config?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
       };
       shared_logic: {
         Row: {

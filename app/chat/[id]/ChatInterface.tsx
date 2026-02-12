@@ -1,7 +1,7 @@
 /**
  * @MODULE_ID app.chat.interface
  * @STAGE admin
- * @DATA_INPUTS ["agent", "chat_input", "course_roadmap", "stream_chunks"]
+ * @DATA_INPUTS ["agent", "chat_input", "course_roadmap", "logic_template", "ai_model_config", "stream_chunks"]
  * @REQUIRED_TOOLS ["app.api.chat", "supabase-js"]
  */
 "use client";
@@ -15,10 +15,26 @@ type AgentRecord = {
   name: string;
   level: number;
   category: string;
+  parentTemplateId?: string | null;
+  parent_template_id?: string | null;
   systemPrompt: string;
   system_prompt: string;
+  logicTemplate?: string;
+  logic_template?: string;
+  finalSystemPrompt?: string;
+  final_system_prompt?: string;
+  aiModelConfig?: AiModelConfig | null;
+  ai_model_config?: AiModelConfig | null;
   courseRoadmap: CourseStep[];
   course_roadmap: CourseStep[];
+};
+
+type AiModelConfig = {
+  provider: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
 };
 
 type ChatMessage = {
@@ -141,6 +157,14 @@ const normalizeAgentUpdate = (
   );
   const hasNameField = Object.prototype.hasOwnProperty.call(payload, "name");
   const hasCategoryField = Object.prototype.hasOwnProperty.call(payload, "category");
+  const hasModelConfigField = Object.prototype.hasOwnProperty.call(
+    payload,
+    "ai_model_config",
+  );
+  const hasFinalPromptField = Object.prototype.hasOwnProperty.call(
+    payload,
+    "final_system_prompt",
+  );
 
   const nextRoadmap = hasRoadmapField
     ? toCourseRoadmap(payload.course_roadmap)
@@ -149,6 +173,17 @@ const normalizeAgentUpdate = (
     hasPromptField && typeof payload.system_prompt === "string"
       ? payload.system_prompt
       : previous.system_prompt;
+  const nextFinalPrompt =
+    hasFinalPromptField && typeof payload.final_system_prompt === "string"
+      ? payload.final_system_prompt
+      : previous.final_system_prompt ?? previous.finalSystemPrompt ?? nextPrompt;
+  const nextModelConfig =
+    hasModelConfigField &&
+    payload.ai_model_config &&
+    typeof payload.ai_model_config === "object" &&
+    !Array.isArray(payload.ai_model_config)
+      ? (payload.ai_model_config as AiModelConfig)
+      : previous.ai_model_config ?? previous.aiModelConfig ?? null;
 
   return {
     ...previous,
@@ -162,6 +197,10 @@ const normalizeAgentUpdate = (
         : previous.category,
     systemPrompt: nextPrompt,
     system_prompt: nextPrompt,
+    finalSystemPrompt: nextFinalPrompt,
+    final_system_prompt: nextFinalPrompt,
+    aiModelConfig: nextModelConfig,
+    ai_model_config: nextModelConfig,
     courseRoadmap: nextRoadmap,
     course_roadmap: nextRoadmap,
   };
@@ -415,15 +454,13 @@ export default function ChatInterface({
         content: messageForAi,
       };
     }
-    const enforcedTeacherPrompt = `${
-      agent.system_prompt || agent.systemPrompt
-    }
-
-PFLICHTMODUS LEHRER:
-- Du musst in jeder Antwort eine vollstaendige Lektion liefern, nicht nur ein kurzes Update.
-- Jede Lektion muss enthalten: Lernziel, Erklaerung, Schritt-fuer-Schritt-Anleitung, Beispiel, Mini-Uebung, naechster Schritt.
-- Wenn eine Roadmap vorhanden ist, unterrichte das angeforderte Modul inhaltlich ausfuehrlich.
-- Antworte immer mit direkt nutzbarem Lerninhalt.`;
+    const resolvedSystemPrompt =
+      agent.final_system_prompt ||
+      agent.finalSystemPrompt ||
+      agent.system_prompt ||
+      agent.systemPrompt;
+    const resolvedModelConfig =
+      agent.ai_model_config ?? agent.aiModelConfig ?? null;
     const assistantMessageId = createId();
     const updateAssistantMessage = (content: string) => {
       setMessages((previous) =>
@@ -454,8 +491,9 @@ PFLICHTMODUS LEHRER:
         body: JSON.stringify({
           message: messageForAi,
           agentId: agent.id,
-          systemPrompt: enforcedTeacherPrompt,
+          systemPrompt: resolvedSystemPrompt,
           agentName: agent.name,
+          aiModelConfig: resolvedModelConfig,
           history: historyForApi,
           hiddenInstruction,
           stream: true,

@@ -1,17 +1,20 @@
 /**
  * @MODULE_ID app.api.chat
  * @STAGE admin
- * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction", "stream", "autoFillStep", "roadmapSnapshot"]
+ * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction", "stream", "autoFillStep", "roadmapSnapshot", "aiModelConfig"]
  * @REQUIRED_TOOLS ["ai-sdk", "supabase-js"]
  */
 import { NextResponse } from "next/server";
 import { generateText, streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGroq } from "@ai-sdk/groq";
 import { createClient } from "@supabase/supabase-js";
 
-const chatModel = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
-const openaiProvider = process.env.OPENAI_API_KEY
+const openaiFactory = process.env.OPENAI_API_KEY
   ? createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+const groqFactory = process.env.GROQ_API_KEY
+  ? createGroq({ apiKey: process.env.GROQ_API_KEY })
   : null;
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -40,6 +43,14 @@ type AutoFillStep = {
   title: string;
   type?: string;
   discipline?: string;
+};
+
+type AiModelConfig = {
+  provider: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
 };
 
 const extractCompletedStepIds = (value: string) =>
@@ -186,6 +197,102 @@ const toAutoFillStep = (value: unknown): AutoFillStep | null => {
         ? discipline
         : undefined,
   };
+};
+
+const toFiniteNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+};
+
+const toAiModelConfig = (value: unknown): AiModelConfig | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const provider = typeof record.provider === "string" ? record.provider.trim() : "";
+  const model = typeof record.model === "string" ? record.model.trim() : "";
+  if (!provider || !model) {
+    return null;
+  }
+
+  const temperature = toFiniteNumber(record.temperature);
+  const maxTokens =
+    toFiniteNumber(record.maxTokens) ?? toFiniteNumber(record.max_tokens);
+  const topP = toFiniteNumber(record.topP) ?? toFiniteNumber(record.top_p);
+
+  return {
+    provider,
+    model,
+    ...(temperature !== undefined ? { temperature } : {}),
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
+    ...(topP !== undefined ? { topP } : {}),
+  };
+};
+
+const loadAgentModelConfig = async (agentId: string): Promise<AiModelConfig | null> => {
+  if (!supabaseAdmin) {
+    return null;
+  }
+
+  const { data: agentData, error: agentError } = await supabaseAdmin
+    .from("agent_templates")
+    .select("ai_model_config, parent_template_id")
+    .eq("id", agentId)
+    .maybeSingle();
+
+  if (agentError || !agentData) {
+    if (agentError) {
+      console.error("Agent model config load error:", agentError);
+    }
+    return null;
+  }
+
+  if (typeof agentData.parent_template_id === "string") {
+    const { data: blueprintData, error: blueprintError } = await supabaseAdmin
+      .from("agent_blueprints")
+      .select("ai_model_config")
+      .eq("id", agentData.parent_template_id)
+      .maybeSingle();
+
+    if (blueprintError) {
+      console.error("Blueprint model config load error:", blueprintError);
+    } else {
+      const blueprintConfig = toAiModelConfig(blueprintData?.ai_model_config);
+      if (blueprintConfig) {
+        return blueprintConfig;
+      }
+    }
+  }
+
+  return toAiModelConfig(agentData.ai_model_config);
+};
+
+const resolveModelFactory = (provider: string) => {
+  const normalizedProvider = provider.trim().toLowerCase();
+  if (normalizedProvider === "groq") {
+    if (!groqFactory) {
+      throw new Error("GROQ_API_KEY fehlt.");
+    }
+    return groqFactory;
+  }
+
+  if (normalizedProvider === "openai") {
+    if (!openaiFactory) {
+      throw new Error("OPENAI_API_KEY fehlt.");
+    }
+    return openaiFactory;
+  }
+
+  throw new Error(`Provider nicht unterstuetzt: ${provider}`);
 };
 
 const loadAgentRoadmap = async (agentId: string): Promise<CourseStep[] | null> => {
@@ -484,6 +591,7 @@ export async function POST(req: Request) {
       stream,
       autoFillStep,
       roadmapSnapshot,
+      aiModelConfig,
     } =
       (await req.json()) as {
       message?: string;
@@ -495,19 +603,33 @@ export async function POST(req: Request) {
       stream?: boolean;
       autoFillStep?: unknown;
       roadmapSnapshot?: unknown;
+      aiModelConfig?: unknown;
     };
 
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "Nachricht fehlt." }, { status: 400 });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: "OPENAI_API_KEY fehlt." }, { status: 500 });
+    const requestedModelConfig = toAiModelConfig(aiModelConfig);
+    const dbModelConfig = agentId ? await loadAgentModelConfig(agentId) : null;
+    if (agentId && !dbModelConfig) {
+      return NextResponse.json(
+        { error: "ai_model_config konnte nicht aus der Datenbank geladen werden." },
+        { status: 500 },
+      );
     }
-    const aiProvider = openaiProvider;
-    if (!aiProvider) {
-      return NextResponse.json({ error: "AI provider unavailable." }, { status: 500 });
+    const resolvedModelConfig = agentId ? dbModelConfig : requestedModelConfig;
+    if (!resolvedModelConfig) {
+      return NextResponse.json(
+        { error: "ai_model_config fehlt oder ist ungueltig." },
+        { status: 500 },
+      );
     }
+    const aiFactory = resolveModelFactory(resolvedModelConfig.provider);
+    const aiModel = aiFactory(resolvedModelConfig.model);
+    const generationTemperature = resolvedModelConfig.temperature ?? 0.2;
+    const generationMaxTokens = resolvedModelConfig.maxTokens;
+    const generationTopP = resolvedModelConfig.topP;
 
     const globalInstruction = `
       ZUSATZ-ANWEISUNG: Wenn der Nutzer nach einem Kurs, Lernplan oder Schritten fragt, erstelle einen Plan mit 5 Modulen.
@@ -651,9 +773,13 @@ export async function POST(req: Request) {
           const run = async () => {
             try {
               const completionStream = streamText({
-                model: aiProvider(chatModel),
+                model: aiModel,
                 messages: requestMessages,
-                temperature: 0.2,
+                temperature: generationTemperature,
+                ...(generationMaxTokens !== undefined
+                  ? { maxTokens: generationMaxTokens }
+                  : {}),
+                ...(generationTopP !== undefined ? { topP: generationTopP } : {}),
               });
 
               let aiContent = "";
@@ -724,9 +850,13 @@ export async function POST(req: Request) {
     }
 
     const response = await generateText({
-      model: aiProvider(chatModel),
+      model: aiModel,
       messages: requestMessages,
-      temperature: 0.2,
+      temperature: generationTemperature,
+      ...(generationMaxTokens !== undefined
+        ? { maxTokens: generationMaxTokens }
+        : {}),
+      ...(generationTopP !== undefined ? { topP: generationTopP } : {}),
     });
 
     const aiContent = response.text ?? "";
