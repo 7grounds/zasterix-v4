@@ -31,6 +31,8 @@ type AgentRecord = {
   final_system_prompt: string;
   aiModelConfig: AiModelConfig | null;
   ai_model_config: AiModelConfig | null;
+  validationLibrary: string[];
+  validation_library: string[];
   courseRoadmap: CourseStep[];
   course_roadmap: CourseStep[];
 };
@@ -48,6 +50,12 @@ const GROQ_FALLBACK_MODEL_CONFIG: AiModelConfig = {
   model: "llama-3.1-8b-instant",
   temperature: 0.2,
 };
+const DEFAULT_VALIDATION_LIBRARY = [
+  "transfer-check",
+  "case-application",
+  "reflection-check",
+  "mini-quiz",
+];
 
 type CourseStep = {
   id: number | string;
@@ -61,6 +69,20 @@ type BlueprintRecord = {
   id: string;
   logic_template: string | null;
   ai_model_config: AiModelConfig | null;
+  validation_library: string[];
+};
+
+const toValidationLibrary = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+        .filter((entry) => entry.length > 0),
+    ),
+  );
 };
 
 const normalizeLevel = (value: unknown) => {
@@ -181,6 +203,8 @@ const buildFallbackAgent = (id: string): AgentRecord => {
       final_system_prompt: fallbackPrompt,
       aiModelConfig: GROQ_FALLBACK_MODEL_CONFIG,
       ai_model_config: GROQ_FALLBACK_MODEL_CONFIG,
+      validationLibrary: DEFAULT_VALIDATION_LIBRARY,
+      validation_library: DEFAULT_VALIDATION_LIBRARY,
       courseRoadmap: [],
       course_roadmap: [],
     };
@@ -215,6 +239,10 @@ const toAgentRecord = ({
   const aiModelConfig =
     toAiModelConfig(blueprint?.ai_model_config ?? record.ai_model_config) ??
     GROQ_FALLBACK_MODEL_CONFIG;
+  const validationLibrary =
+    blueprint?.validation_library && blueprint.validation_library.length > 0
+      ? blueprint.validation_library
+      : DEFAULT_VALIDATION_LIBRARY;
   const courseRoadmap = toCourseRoadmap(record.course_roadmap);
 
   return {
@@ -232,6 +260,8 @@ const toAgentRecord = ({
     final_system_prompt: finalSystemPrompt,
     aiModelConfig,
     ai_model_config: aiModelConfig,
+    validationLibrary,
+    validation_library: validationLibrary,
     courseRoadmap,
     course_roadmap: courseRoadmap,
   };
@@ -268,7 +298,7 @@ async function getAgent(id: string): Promise<AgentRecord> {
   if (parentTemplateId) {
     const { data: blueprintData, error: blueprintError } = await supabase
       .from("agent_blueprints")
-      .select("id, logic_template, ai_model_config")
+      .select("id, logic_template, ai_model_config, validation_library")
       .eq("id", parentTemplateId)
       .maybeSingle();
 
@@ -282,6 +312,7 @@ async function getAgent(id: string): Promise<AgentRecord> {
             ? blueprintData.logic_template
             : null,
         ai_model_config: toAiModelConfig(blueprintData.ai_model_config),
+        validation_library: toValidationLibrary(blueprintData.validation_library),
       };
     }
   }

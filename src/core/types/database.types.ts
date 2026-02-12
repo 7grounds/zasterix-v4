@@ -111,6 +111,7 @@ export interface Database {
           name: string;
           logic_template: string;
           ai_model_config: Json;
+          validation_library: Json;
           created_at: string;
         };
         Insert: {
@@ -118,6 +119,7 @@ export interface Database {
           name: string;
           logic_template?: string;
           ai_model_config?: Json;
+          validation_library?: Json;
           created_at?: string;
         };
         Update: {
@@ -125,6 +127,7 @@ export interface Database {
           name?: string;
           logic_template?: string;
           ai_model_config?: Json;
+          validation_library?: Json;
           created_at?: string;
         };
         Relationships: [];

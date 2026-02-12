@@ -1,7 +1,7 @@
 /**
  * @MODULE_ID app.api.chat
  * @STAGE admin
- * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction", "stream", "autoFillStep", "roadmapSnapshot", "aiModelConfig"]
+ * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction", "stream", "autoFillStep", "roadmapSnapshot", "aiModelConfig", "validationLibrary", "userId", "organizationId"]
  * @REQUIRED_TOOLS ["ai-sdk", "supabase-js"]
  */
 import { NextResponse } from "next/server";
@@ -58,6 +58,14 @@ const GROQ_FALLBACK_MODEL_CONFIG: AiModelConfig = {
   model: "llama-3.1-8b-instant",
   temperature: 0.2,
 };
+
+const DEFAULT_VALIDATION_LIBRARY = [
+  "transfer-check",
+  "case-application",
+  "reflection-check",
+  "mini-quiz",
+];
+const USER_PROGRESS_STAGE_ID = "zasterix-teacher";
 
 const extractCompletedStepIds = (value: string) =>
   Array.from(value.matchAll(/UPDATE_STEP_(\d+)_COMPLETED/g), (match) =>
@@ -244,6 +252,89 @@ const toAiModelConfig = (value: unknown): AiModelConfig | null => {
   };
 };
 
+const toValidationLibrary = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
+const normalizeStepIdValue = (value: number | string) => String(value).trim();
+
+const findFirstPendingStep = (roadmap: CourseStep[] | null) =>
+  roadmap?.find((step) => step.status !== "completed") ?? null;
+
+const buildProgressModuleId = ({
+  agentId,
+  stepId,
+}: {
+  agentId: string;
+  stepId: number | string;
+}) => `${agentId}-module-${normalizeStepIdValue(stepId)}`;
+
+const validationPendingTokenPrefix = ({
+  agentId,
+  stepId,
+}: {
+  agentId: string;
+  stepId: number | string;
+}) => `validation_pending:${agentId}:${normalizeStepIdValue(stepId)}:`;
+
+const validationPassedTokenPrefix = ({
+  agentId,
+  stepId,
+}: {
+  agentId: string;
+  stepId: number | string;
+}) => `validation_passed:${agentId}:${normalizeStepIdValue(stepId)}:`;
+
+const extractValidationSelectionMap = (value: string) => {
+  const selections = new Map<string, string>();
+  const regex = /VALIDATION_TYPE_([A-Za-z0-9-]+)_([A-Za-z0-9_-]+)/g;
+  for (const match of value.matchAll(regex)) {
+    const stepId = match[1];
+    const validationType = match[2]?.toLowerCase();
+    if (stepId && validationType) {
+      selections.set(stepId, validationType);
+    }
+  }
+  return selections;
+};
+
+const extractValidationPassedStepIds = (value: string) =>
+  Array.from(
+    new Set(
+      Array.from(
+        value.matchAll(/VALIDATION_RESULT_([A-Za-z0-9-]+)_PASSED/g),
+        (match) => match[1],
+      ).filter((stepId) => stepId.length > 0),
+    ),
+  );
+
+const sanitizeValidationMarkers = (value: string) =>
+  value
+    .replace(/VALIDATION_TYPE_[A-Za-z0-9-]+_[A-Za-z0-9_-]+/g, "")
+    .replace(/VALIDATION_RESULT_[A-Za-z0-9-]+_(?:PASSED|FAILED)/g, "");
+
+const buildValidationLibraryInstruction = (library: string[]) =>
+  [
+    "VALIDATION_LIBRARY:",
+    ...library.map((entry) => `- ${entry}`),
+    "",
+    "Modulwechsel-Regel:",
+    "- Bei Modulwechsel waehle autonom genau eine Validierungsart aus der Bibliothek.",
+    "- Gib Marker aus: VALIDATION_TYPE_[NEXT_MODULE_ID]_[TYPE].",
+    "- Wenn Validierung aktiv ist, pausiere den Fachdialog bis bestanden.",
+    "- Bei bestanden: VALIDATION_RESULT_[MODULE_ID]_PASSED.",
+    "- Bei nicht bestanden: VALIDATION_RESULT_[MODULE_ID]_FAILED.",
+  ].join("\n");
+
 const loadAgentModelConfig = async (agentId: string): Promise<AiModelConfig | null> => {
   if (!supabaseAdmin) {
     return null;
@@ -282,6 +373,44 @@ const loadAgentModelConfig = async (agentId: string): Promise<AiModelConfig | nu
   return toAiModelConfig(agentData.ai_model_config);
 };
 
+const loadAgentValidationLibrary = async (agentId: string): Promise<string[]> => {
+  if (!supabaseAdmin) {
+    return [];
+  }
+
+  const { data: agentData, error: agentError } = await supabaseAdmin
+    .from("agent_templates")
+    .select("parent_template_id")
+    .eq("id", agentId)
+    .maybeSingle();
+
+  if (agentError || !agentData) {
+    if (agentError) {
+      console.error("Validation library load error:", agentError);
+    }
+    return [];
+  }
+
+  if (typeof agentData.parent_template_id === "string") {
+    const { data: blueprintData, error: blueprintError } = await supabaseAdmin
+      .from("agent_blueprints")
+      .select("validation_library")
+      .eq("id", agentData.parent_template_id)
+      .maybeSingle();
+
+    if (blueprintError) {
+      console.error("Blueprint validation library load error:", blueprintError);
+    } else {
+      const blueprintLibrary = toValidationLibrary(blueprintData?.validation_library);
+      if (blueprintLibrary.length > 0) {
+        return blueprintLibrary;
+      }
+    }
+  }
+
+  return [];
+};
+
 const resolveModelFactory = (provider: string) => {
   const normalizedProvider = provider.trim().toLowerCase();
   if (normalizedProvider === "groq") {
@@ -299,6 +428,111 @@ const resolveModelFactory = (provider: string) => {
   }
 
   throw new Error(`Provider nicht unterstuetzt: ${provider}`);
+};
+
+type ValidationGateState = {
+  type: string;
+  pending: boolean;
+  passed: boolean;
+};
+
+const readValidationGateState = ({
+  completedTasks,
+  agentId,
+  stepId,
+}: {
+  completedTasks: string[];
+  agentId: string;
+  stepId: number | string;
+}): ValidationGateState | null => {
+  const pendingPrefix = validationPendingTokenPrefix({ agentId, stepId });
+  const passedPrefix = validationPassedTokenPrefix({ agentId, stepId });
+  const pendingToken = completedTasks.find((task) => task.startsWith(pendingPrefix));
+  const passedToken = completedTasks.find((task) => task.startsWith(passedPrefix));
+
+  const typeFromPending = pendingToken ? pendingToken.slice(pendingPrefix.length) : null;
+  const typeFromPassed = passedToken ? passedToken.slice(passedPrefix.length) : null;
+  const resolvedType = typeFromPending || typeFromPassed;
+  if (!resolvedType) {
+    return null;
+  }
+
+  return {
+    type: resolvedType,
+    pending: Boolean(pendingToken),
+    passed: Boolean(passedToken),
+  };
+};
+
+const loadProgressRow = async ({
+  userId,
+  agentId,
+  stepId,
+}: {
+  userId: string;
+  agentId: string;
+  stepId: number | string;
+}) => {
+  if (!supabaseAdmin) {
+    return { completedTasks: [] as string[] };
+  }
+
+  const moduleId = buildProgressModuleId({ agentId, stepId });
+  const { data, error } = await supabaseAdmin
+    .from("user_progress")
+    .select("completed_tasks")
+    .eq("user_id", userId)
+    .eq("stage_id", USER_PROGRESS_STAGE_ID)
+    .eq("module_id", moduleId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("user_progress read error:", error);
+  }
+
+  return {
+    completedTasks: Array.isArray(data?.completed_tasks)
+      ? data.completed_tasks.filter((entry) => typeof entry === "string")
+      : [],
+  };
+};
+
+const upsertProgressValidationState = async ({
+  userId,
+  organizationId,
+  agentId,
+  stepId,
+  completedTasks,
+  isCompleted,
+}: {
+  userId: string;
+  organizationId: string | null;
+  agentId: string;
+  stepId: number | string;
+  completedTasks: string[];
+  isCompleted: boolean;
+}) => {
+  if (!supabaseAdmin) {
+    return;
+  }
+
+  const moduleId = buildProgressModuleId({ agentId, stepId });
+  const { error } = await supabaseAdmin.from("user_progress").upsert(
+    {
+      user_id: userId,
+      organization_id: organizationId,
+      stage_id: USER_PROGRESS_STAGE_ID,
+      module_id: moduleId,
+      completed_tasks: completedTasks,
+      is_completed: isCompleted,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,stage_id,module_id" },
+  );
+
+  if (error) {
+    console.error("user_progress validation upsert error:", error);
+  }
 };
 
 const loadAgentRoadmap = async (agentId: string): Promise<CourseStep[] | null> => {
@@ -459,9 +693,11 @@ const applyGeneratedStepContent = async ({
 };
 
 const sanitizeAssistantContent = (value: string) =>
-  value
-    .replace(/COURSE_JSON_START[\s\S]*?COURSE_JSON_END/g, "")
-    .replace(/UPDATE_STEP_\d+_COMPLETED/g, "");
+  sanitizeValidationMarkers(
+    value
+      .replace(/COURSE_JSON_START[\s\S]*?COURSE_JSON_END/g, "")
+      .replace(/UPDATE_STEP_\d+_COMPLETED/g, ""),
+  );
 
 const sanitizeAssistantContentPartial = (value: string) => {
   let cleaned = sanitizeAssistantContent(value);
@@ -469,7 +705,7 @@ const sanitizeAssistantContentPartial = (value: string) => {
   if (openCourseBlockIndex !== -1) {
     cleaned = cleaned.slice(0, openCourseBlockIndex);
   }
-  return cleaned.replace(/UPDATE_STEP_[\d_]*$/g, "");
+  return sanitizeValidationMarkers(cleaned.replace(/UPDATE_STEP_[\d_]*$/g, ""));
 };
 
 const STREAM_CHUNK_SIZE = 28;
@@ -598,6 +834,9 @@ export async function POST(req: Request) {
       autoFillStep,
       roadmapSnapshot,
       aiModelConfig,
+      validationLibrary,
+      userId,
+      organizationId,
     } =
       (await req.json()) as {
       message?: string;
@@ -610,6 +849,9 @@ export async function POST(req: Request) {
       autoFillStep?: unknown;
       roadmapSnapshot?: unknown;
       aiModelConfig?: unknown;
+      validationLibrary?: unknown;
+      userId?: string;
+      organizationId?: string | null;
     };
 
     if (!message || typeof message !== "string") {
@@ -663,13 +905,59 @@ export async function POST(req: Request) {
 
     const normalizedMessage = message.trim();
     const shouldStream = Boolean(stream);
+    const normalizedUserId =
+      typeof userId === "string" && userId.trim().length > 0 ? userId.trim() : null;
+    const normalizedOrganizationId =
+      typeof organizationId === "string" && organizationId.trim().length > 0
+        ? organizationId.trim()
+        : null;
+    const requestValidationLibrary = toValidationLibrary(validationLibrary);
+    const dbValidationLibrary = agentId ? await loadAgentValidationLibrary(agentId) : [];
+    const resolvedValidationLibrary =
+      dbValidationLibrary.length > 0
+        ? dbValidationLibrary
+        : requestValidationLibrary.length > 0
+          ? requestValidationLibrary
+          : DEFAULT_VALIDATION_LIBRARY;
+    const validationLibraryInstruction = buildValidationLibraryInstruction(
+      resolvedValidationLibrary,
+    );
     const requestedAutoFillStep = toAutoFillStep(autoFillStep);
     const snapshotRoadmap = toCourseRoadmap(roadmapSnapshot);
     let roadmapForAutoFill = snapshotRoadmap;
+    if (agentId && (!roadmapForAutoFill || roadmapForAutoFill.length === 0)) {
+      const dbRoadmap = await loadAgentRoadmap(agentId);
+      if (dbRoadmap && dbRoadmap.length > 0) {
+        roadmapForAutoFill = dbRoadmap;
+      }
+    }
     if (requestedAutoFillStep && agentId) {
       const dbRoadmap = await loadAgentRoadmap(agentId);
       if (dbRoadmap && dbRoadmap.length > 0) {
         roadmapForAutoFill = dbRoadmap;
+      }
+    }
+
+    const activeValidationStep = findFirstPendingStep(roadmapForAutoFill);
+    let pendingValidationGate:
+      | { stepId: string; type: string }
+      | null = null;
+    if (normalizedUserId && agentId && activeValidationStep) {
+      const progressRow = await loadProgressRow({
+        userId: normalizedUserId,
+        agentId,
+        stepId: activeValidationStep.id,
+      });
+      const gateState = readValidationGateState({
+        completedTasks: progressRow.completedTasks,
+        agentId,
+        stepId: activeValidationStep.id,
+      });
+      if (gateState?.pending && !gateState.passed) {
+        pendingValidationGate = {
+          stepId: normalizeStepIdValue(activeValidationStep.id),
+          type: gateState.type,
+        };
       }
     }
 
@@ -699,7 +987,15 @@ export async function POST(req: Request) {
             requestedAutoFillStep?.discipline || "General",
           )
         : null;
-    const effectiveHiddenSystemInstruction = [hiddenSystemInstruction, autoFillInstruction]
+    const validationPauseInstruction = pendingValidationGate
+      ? `DIALOG-PAUSE AKTIV: Modul ${pendingValidationGate.stepId} ist gesperrt. Fuehre ausschliesslich die Validierung "${pendingValidationGate.type}" durch. Erlaube KEINEN Modulfortschritt, bis du VALIDATION_RESULT_${pendingValidationGate.stepId}_PASSED ausgibst.`
+      : null;
+    const effectiveHiddenSystemInstruction = [
+      hiddenSystemInstruction,
+      autoFillInstruction,
+      validationLibraryInstruction,
+      validationPauseInstruction,
+    ]
       .filter((value): value is string => Boolean(value && value.trim().length > 0))
       .join("\n\n");
 
@@ -757,6 +1053,138 @@ export async function POST(req: Request) {
       ...historyWithCurrentMessage,
     ];
 
+    const handleValidationProgressUpdate = async ({
+      aiContent,
+      roadmapCandidate,
+      completedStepIds,
+    }: {
+      aiContent: string;
+      roadmapCandidate: CourseStep[] | null;
+      completedStepIds: number[];
+    }) => {
+      let validationMeta: {
+        paused: boolean;
+        stepId: string | null;
+        type: string | null;
+      } = pendingValidationGate
+        ? {
+            paused: true,
+            stepId: pendingValidationGate.stepId,
+            type: pendingValidationGate.type,
+          }
+        : { paused: false, stepId: null, type: null };
+
+      if (!normalizedUserId || !agentId) {
+        return validationMeta;
+      }
+
+      const passedStepIds = extractValidationPassedStepIds(aiContent);
+      for (const stepId of passedStepIds) {
+        const progressRow = await loadProgressRow({
+          userId: normalizedUserId,
+          agentId,
+          stepId,
+        });
+        const gateState = readValidationGateState({
+          completedTasks: progressRow.completedTasks,
+          agentId,
+          stepId,
+        });
+        if (!gateState) {
+          continue;
+        }
+
+        const pendingPrefix = validationPendingTokenPrefix({ agentId, stepId });
+        const passedPrefix = validationPassedTokenPrefix({ agentId, stepId });
+        const nextTasks = progressRow.completedTasks.filter(
+          (task) => !task.startsWith(pendingPrefix),
+        );
+        const passedToken = `${passedPrefix}${gateState.type}`;
+        if (!nextTasks.includes(passedToken)) {
+          nextTasks.push(passedToken);
+        }
+        const unlockToken = `validation_unlocked:${agentId}:${stepId}`;
+        if (!nextTasks.includes(unlockToken)) {
+          nextTasks.push(unlockToken);
+        }
+
+        await upsertProgressValidationState({
+          userId: normalizedUserId,
+          organizationId: normalizedOrganizationId,
+          agentId,
+          stepId,
+          completedTasks: nextTasks,
+          isCompleted: true,
+        });
+
+        if (validationMeta.stepId === stepId) {
+          validationMeta = { paused: false, stepId: null, type: null };
+        }
+      }
+
+      const nextStep = findFirstPendingStep(roadmapCandidate ?? roadmapForAutoFill);
+      if (nextStep && completedStepIds.length > 0) {
+        const nextStepId = normalizeStepIdValue(nextStep.id);
+        const progressRow = await loadProgressRow({
+          userId: normalizedUserId,
+          agentId,
+          stepId: nextStep.id,
+        });
+        const gateState = readValidationGateState({
+          completedTasks: progressRow.completedTasks,
+          agentId,
+          stepId: nextStep.id,
+        });
+
+        if (!gateState || (!gateState.pending && !gateState.passed)) {
+          const selectedType =
+            extractValidationSelectionMap(aiContent).get(nextStepId) ??
+            resolvedValidationLibrary[0] ??
+            "transfer-check";
+          const pendingPrefix = validationPendingTokenPrefix({
+            agentId,
+            stepId: nextStep.id,
+          });
+          const passedPrefix = validationPassedTokenPrefix({
+            agentId,
+            stepId: nextStep.id,
+          });
+          const nextTasks = Array.from(
+            new Set([
+              ...progressRow.completedTasks.filter(
+                (task) =>
+                  !task.startsWith(pendingPrefix) && !task.startsWith(passedPrefix),
+              ),
+              `${pendingPrefix}${selectedType}`,
+            ]),
+          );
+
+          await upsertProgressValidationState({
+            userId: normalizedUserId,
+            organizationId: normalizedOrganizationId,
+            agentId,
+            stepId: nextStep.id,
+            completedTasks: nextTasks,
+            isCompleted: false,
+          });
+
+          validationMeta = {
+            paused: true,
+            stepId: nextStepId,
+            type: selectedType,
+          };
+        } else if (gateState.pending && !gateState.passed) {
+          validationMeta = {
+            paused: true,
+            stepId: nextStepId,
+            type: gateState.type,
+          };
+        }
+      }
+
+      return validationMeta;
+    };
+
     if (shouldStream) {
       const encoder = new TextEncoder();
       const streamResponse = new ReadableStream({
@@ -809,11 +1237,17 @@ export async function POST(req: Request) {
                       roadmapCandidate: finalized.roadmapPayload ?? roadmapForAutoFill,
                     })
                   : finalized.roadmapPayload;
+              const validationMeta = await handleValidationProgressUpdate({
+                aiContent,
+                roadmapCandidate: roadmapWithGeneratedContent ?? roadmapForAutoFill,
+                completedStepIds: finalized.completedStepIds,
+              });
               sendEvent({ type: "final_text", text: finalized.cleanText });
               sendEvent({
                 type: "meta",
                 roadmap: roadmapWithGeneratedContent,
                 completedStepIds: finalized.completedStepIds,
+                validation: validationMeta,
               });
               sendEvent({ type: "done" });
             } catch (streamError: unknown) {
@@ -870,10 +1304,16 @@ export async function POST(req: Request) {
             roadmapCandidate: finalized.roadmapPayload ?? roadmapForAutoFill,
           })
         : finalized.roadmapPayload;
+    const validationMeta = await handleValidationProgressUpdate({
+      aiContent,
+      roadmapCandidate: roadmapWithGeneratedContent ?? roadmapForAutoFill,
+      completedStepIds: finalized.completedStepIds,
+    });
     return NextResponse.json({
       text: finalized.cleanText,
       roadmap: roadmapWithGeneratedContent,
       completedStepIds: finalized.completedStepIds,
+      validation: validationMeta,
     });
   } catch (error: unknown) {
     console.error("Chat Error:", error);

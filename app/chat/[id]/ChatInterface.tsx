@@ -25,6 +25,8 @@ type AgentRecord = {
   final_system_prompt?: string;
   aiModelConfig?: AiModelConfig | null;
   ai_model_config?: AiModelConfig | null;
+  validationLibrary?: string[];
+  validation_library?: string[];
   courseRoadmap: CourseStep[];
   course_roadmap: CourseStep[];
 };
@@ -79,6 +81,19 @@ const toAiModelConfig = (value: unknown): AiModelConfig | null => {
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(topP !== undefined ? { topP } : {}),
   };
+};
+
+const toValidationLibrary = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+        .filter((entry) => entry.length > 0),
+    ),
+  );
 };
 
 type ChatMessage = {
@@ -209,6 +224,10 @@ const normalizeAgentUpdate = (
     payload,
     "final_system_prompt",
   );
+  const hasValidationLibraryField = Object.prototype.hasOwnProperty.call(
+    payload,
+    "validation_library",
+  );
 
   const nextRoadmap = hasRoadmapField
     ? toCourseRoadmap(payload.course_roadmap)
@@ -229,6 +248,13 @@ const normalizeAgentUpdate = (
       ? toAiModelConfig(payload.ai_model_config)
       : toAiModelConfig(previous.ai_model_config ?? previous.aiModelConfig);
   const safeModelConfig = nextModelConfig ?? GROQ_FALLBACK_MODEL_CONFIG;
+  const nextValidationLibrary = hasValidationLibraryField
+    ? toValidationLibrary(payload.validation_library)
+    : toValidationLibrary(previous.validation_library ?? previous.validationLibrary);
+  const safeValidationLibrary =
+    nextValidationLibrary.length > 0
+      ? nextValidationLibrary
+      : ["transfer-check", "case-application", "reflection-check", "mini-quiz"];
 
   return {
     ...previous,
@@ -246,6 +272,8 @@ const normalizeAgentUpdate = (
     final_system_prompt: nextFinalPrompt,
     aiModelConfig: safeModelConfig,
     ai_model_config: safeModelConfig,
+    validationLibrary: safeValidationLibrary,
+    validation_library: safeValidationLibrary,
     courseRoadmap: nextRoadmap,
     course_roadmap: nextRoadmap,
   };
@@ -424,7 +452,7 @@ export default function ChatInterface({
       : String(moduleId);
     const progressStageId = "zasterix-teacher";
     const progressModuleId = `${agent.id}-module-${safeModuleId}`;
-    const completedTaskId = `lesson-${safeModuleId}-completed`;
+    const completedTaskId = `lesson-${safeModuleId}-started`;
 
     const { data: existingProgress } = await supabase
       .from("user_progress")
@@ -444,7 +472,7 @@ export default function ChatInterface({
         stage_id: progressStageId,
         module_id: progressModuleId,
         completed_tasks: completedTasks,
-        is_completed: true,
+        is_completed: false,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,stage_id,module_id" },
@@ -507,6 +535,9 @@ export default function ChatInterface({
     const resolvedModelConfig =
       toAiModelConfig(agent.ai_model_config ?? agent.aiModelConfig) ??
       GROQ_FALLBACK_MODEL_CONFIG;
+    const resolvedValidationLibrary = toValidationLibrary(
+      agent.validation_library ?? agent.validationLibrary,
+    );
     const assistantMessageId = createId();
     const updateAssistantMessage = (content: string) => {
       setMessages((previous) =>
@@ -540,6 +571,9 @@ export default function ChatInterface({
           systemPrompt: resolvedSystemPrompt,
           agentName: agent.name,
           aiModelConfig: resolvedModelConfig,
+          validationLibrary: resolvedValidationLibrary,
+          userId,
+          organizationId,
           history: historyForApi,
           hiddenInstruction,
           stream: true,
