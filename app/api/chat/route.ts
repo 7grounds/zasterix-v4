@@ -1,7 +1,7 @@
 /**
  * @MODULE_ID app.api.chat
  * @STAGE admin
- * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction", "stream", "autoFillStep", "roadmapSnapshot", "aiModelConfig", "validationLibrary", "userId", "organizationId"]
+ * @DATA_INPUTS ["message", "agentId", "blueprintId", "systemPrompt", "history", "hiddenInstruction", "stream", "autoFillStep", "roadmapSnapshot", "aiModelConfig", "validationLibrary", "userId", "organizationId"]
  * @REQUIRED_TOOLS ["ai-sdk", "supabase-js"]
  */
 import { NextResponse } from "next/server";
@@ -66,6 +66,46 @@ const DEFAULT_VALIDATION_LIBRARY = [
   "mini-quiz",
 ];
 const USER_PROGRESS_STAGE_ID = "zasterix-teacher";
+const DIFFERENTIATION_KEYWORD_MARKERS = {
+  start: "DIFFERENTIATION_KEYWORDS_START",
+  end: "DIFFERENTIATION_KEYWORDS_END",
+};
+
+const DIFFERENTIATION_RULES: Array<{
+  keyword: string;
+  patterns: RegExp[];
+}> = [
+  {
+    keyword: "speed_over_cost",
+    patterns: [
+      /\bspeed\s*(?:over|>\s*)\s*cost\b/i,
+      /\bschnelligkeit\s*(?:vor|ueber)\s*kosten\b/i,
+    ],
+  },
+  {
+    keyword: "cost_over_speed",
+    patterns: [
+      /\bcost\s*(?:over|>\s*)\s*speed\b/i,
+      /\bkosten\s*(?:vor|ueber)\s*schnelligkeit\b/i,
+    ],
+  },
+  {
+    keyword: "b2b_focus",
+    patterns: [/\bb2b\b/i, /\bbusiness\s*to\s*business\b/i],
+  },
+  {
+    keyword: "b2c_focus",
+    patterns: [/\bb2c\b/i, /\bbusiness\s*to\s*consumer\b/i],
+  },
+  {
+    keyword: "compliance_first",
+    patterns: [/\bcompliance\s*(?:first|priorit(?:y|ized?))/i, /\bcompliance\s*vor\b/i],
+  },
+  {
+    keyword: "quality_over_speed",
+    patterns: [/\bquality\s*(?:over|>\s*)\s*speed\b/i, /\bqualitaet\s*(?:vor|ueber)\s*schnelligkeit\b/i],
+  },
+];
 
 const extractCompletedStepIds = (value: string) =>
   Array.from(value.matchAll(/UPDATE_STEP_(\d+)_COMPLETED/g), (match) =>
@@ -265,6 +305,93 @@ const toValidationLibrary = (value: unknown): string[] => {
   );
 };
 
+const normalizeDifferentiationKeyword = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_-]/g, "")
+    .slice(0, 80);
+
+const toDifferentiationKeywordArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) =>
+          typeof entry === "string" ? normalizeDifferentiationKeyword(entry) : "",
+        )
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
+const extractDifferentiationKeywordsFromTemplate = (value: unknown): string[] => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+  const record = value as Record<string, unknown>;
+  return toDifferentiationKeywordArray(record.differentiation_keywords);
+};
+
+const inferDifferentiationKeywordsFromText = (value: string) =>
+  Array.from(
+    new Set(
+      DIFFERENTIATION_RULES.flatMap((rule) =>
+        rule.patterns.some((pattern) => pattern.test(value)) ? [rule.keyword] : [],
+      ),
+    ),
+  );
+
+const extractDifferentiationKeywordsFromMarkers = (value: string): string[] => {
+  const blockRegex = new RegExp(
+    `${DIFFERENTIATION_KEYWORD_MARKERS.start}([\\s\\S]*?)${DIFFERENTIATION_KEYWORD_MARKERS.end}`,
+    "g",
+  );
+  const blockKeywords = Array.from(value.matchAll(blockRegex))
+    .flatMap((match) => {
+      const content = match[1]?.trim() ?? "";
+      if (!content) {
+        return [] as string[];
+      }
+      try {
+        const parsed = JSON.parse(content) as unknown;
+        return toDifferentiationKeywordArray(parsed);
+      } catch {
+        return content
+          .split(/[,\n]/g)
+          .map((entry) => normalizeDifferentiationKeyword(entry))
+          .filter((entry) => entry.length > 0);
+      }
+    })
+    .filter((entry) => entry.length > 0);
+
+  const inlineRegex = /DIFFERENTIATION_KEYWORDS:\s*([^\n]+)/gi;
+  const inlineKeywords = Array.from(value.matchAll(inlineRegex))
+    .flatMap((match) => (match[1] ?? "").split(","))
+    .map((entry) => normalizeDifferentiationKeyword(entry))
+    .filter((entry) => entry.length > 0);
+
+  return Array.from(new Set([...blockKeywords, ...inlineKeywords]));
+};
+
+const resolveDifferentiationKeywords = ({
+  aiContent,
+  userMessage,
+}: {
+  aiContent: string;
+  userMessage: string;
+}) =>
+  Array.from(
+    new Set([
+      ...extractDifferentiationKeywordsFromMarkers(aiContent),
+      ...inferDifferentiationKeywordsFromText(aiContent),
+      ...inferDifferentiationKeywordsFromText(userMessage),
+    ]),
+  );
+
 const normalizeStepIdValue = (value: number | string) => String(value).trim();
 
 const findFirstPendingStep = (roadmap: CourseStep[] | null) =>
@@ -320,7 +447,12 @@ const extractValidationPassedStepIds = (value: string) =>
 const sanitizeValidationMarkers = (value: string) =>
   value
     .replace(/VALIDATION_TYPE_[A-Za-z0-9-]+_[A-Za-z0-9_-]+/g, "")
-    .replace(/VALIDATION_RESULT_[A-Za-z0-9-]+_(?:PASSED|FAILED)/g, "");
+    .replace(/VALIDATION_RESULT_[A-Za-z0-9-]+_(?:PASSED|FAILED)/g, "")
+    .replace(
+      /DIFFERENTIATION_KEYWORDS_START[\s\S]*?DIFFERENTIATION_KEYWORDS_END/g,
+      "",
+    )
+    .replace(/DIFFERENTIATION_KEYWORDS:\s*[^\n]+/g, "");
 
 const buildValidationLibraryInstruction = (library: string[]) =>
   [
@@ -409,6 +541,112 @@ const loadAgentValidationLibrary = async (agentId: string): Promise<string[]> =>
   }
 
   return [];
+};
+
+const loadAgentBlueprintForDifferentiation = async ({
+  agentId,
+  blueprintId,
+}: {
+  agentId?: string;
+  blueprintId?: string;
+}) => {
+  if (!supabaseAdmin) {
+    return null;
+  }
+
+  let resolvedBlueprintId =
+    typeof blueprintId === "string" && blueprintId.trim().length > 0
+      ? blueprintId.trim()
+      : null;
+
+  if (!resolvedBlueprintId && agentId) {
+    const { data: agentData, error: agentError } = await supabaseAdmin
+      .from("agent_templates")
+      .select("parent_template_id")
+      .eq("id", agentId)
+      .maybeSingle();
+
+    if (agentError || !agentData || typeof agentData.parent_template_id !== "string") {
+      if (agentError) {
+        console.error("Blueprint relation load error:", agentError);
+      }
+      return null;
+    }
+
+    resolvedBlueprintId = agentData.parent_template_id;
+  }
+
+  if (!resolvedBlueprintId) {
+    return null;
+  }
+
+  const { data: blueprintData, error: blueprintError } = await supabaseAdmin
+    .from("agent_blueprints")
+    .select("id, logic_template")
+    .eq("id", resolvedBlueprintId)
+    .maybeSingle();
+
+  if (blueprintError || !blueprintData) {
+    if (blueprintError) {
+      console.error("Blueprint logic_template load error:", blueprintError);
+    }
+    return null;
+  }
+
+  return {
+    blueprintId: blueprintData.id,
+    existingKeywords: extractDifferentiationKeywordsFromTemplate(
+      blueprintData.logic_template,
+    ),
+  };
+};
+
+const persistDifferentiationKeywords = async ({
+  agentId,
+  blueprintId,
+  keywords,
+}: {
+  agentId?: string;
+  blueprintId?: string;
+  keywords: string[];
+}) => {
+  if ((!agentId && !blueprintId) || keywords.length === 0 || !supabaseAdmin) {
+    return [] as string[];
+  }
+
+  const blueprintData = await loadAgentBlueprintForDifferentiation({
+    agentId,
+    blueprintId,
+  });
+  if (!blueprintData) {
+    return [] as string[];
+  }
+
+  const mergedKeywords = Array.from(
+    new Set([
+      ...blueprintData.existingKeywords,
+      ...keywords.map((entry) => normalizeDifferentiationKeyword(entry)),
+    ]),
+  ).filter((entry) => entry.length > 0);
+
+  if (mergedKeywords.length === 0) {
+    return [];
+  }
+
+  const { error } = await supabaseAdmin.rpc(
+    "update_agent_blueprint_differentiation_keywords",
+    {
+      p_keywords: mergedKeywords,
+      p_blueprint_id: blueprintData.blueprintId,
+    },
+  );
+
+  if (error) {
+    console.error("Differentiation keyword update error:", error);
+    return [];
+  }
+
+  return mergedKeywords;
 };
 
 const resolveModelFactory = (provider: string) => {
@@ -705,6 +943,12 @@ const sanitizeAssistantContentPartial = (value: string) => {
   if (openCourseBlockIndex !== -1) {
     cleaned = cleaned.slice(0, openCourseBlockIndex);
   }
+  const openDifferentiationBlockIndex = cleaned.lastIndexOf(
+    DIFFERENTIATION_KEYWORD_MARKERS.start,
+  );
+  if (openDifferentiationBlockIndex !== -1) {
+    cleaned = cleaned.slice(0, openDifferentiationBlockIndex);
+  }
   return sanitizeValidationMarkers(cleaned.replace(/UPDATE_STEP_[\d_]*$/g, ""));
 };
 
@@ -826,6 +1070,7 @@ export async function POST(req: Request) {
     const {
       message,
       agentId,
+      blueprintId,
       systemPrompt,
       agentName,
       history,
@@ -841,6 +1086,7 @@ export async function POST(req: Request) {
       (await req.json()) as {
       message?: string;
       agentId?: string;
+      blueprintId?: string;
       systemPrompt?: string;
       agentName?: string;
       history?: ChatHistoryEntry[];
@@ -888,6 +1134,14 @@ export async function POST(req: Request) {
 
       Wenn ein VERSTECKTER UNTERRICHTSBEFEHL gesetzt ist, fuehre ihn strikt aus und priorisiere diese Anweisung.
       Erzeuge in diesem Fall keinen COURSE_JSON-Block, ausser die versteckte Anweisung verlangt ihn explizit.
+
+      DIFFERENZIERUNGS-REGEL:
+      Wenn du eine taktische Prioritaet erkennst (z.B. "Speed ueber Kosten", "B2B Fokus"),
+      gib am Ende EXAKT diesen Marker-Block aus:
+      DIFFERENTIATION_KEYWORDS_START
+      ["speed_over_cost","b2b_focus"]
+      DIFFERENTIATION_KEYWORDS_END
+      Nutze nur kurze Stichworte, keine langen Saetze.
     `;
 
     const resolvedSystemPrompt =
@@ -911,6 +1165,10 @@ export async function POST(req: Request) {
       typeof organizationId === "string" && organizationId.trim().length > 0
         ? organizationId.trim()
         : null;
+    const normalizedBlueprintId =
+      typeof blueprintId === "string" && blueprintId.trim().length > 0
+        ? blueprintId.trim()
+        : undefined;
     const requestValidationLibrary = toValidationLibrary(validationLibrary);
     const dbValidationLibrary = agentId ? await loadAgentValidationLibrary(agentId) : [];
     const resolvedValidationLibrary =
@@ -1242,12 +1500,23 @@ export async function POST(req: Request) {
                 roadmapCandidate: roadmapWithGeneratedContent ?? roadmapForAutoFill,
                 completedStepIds: finalized.completedStepIds,
               });
+              const differentiationKeywords = resolveDifferentiationKeywords({
+                aiContent,
+                userMessage: normalizedMessage,
+              });
+              const persistedDifferentiationKeywords =
+                await persistDifferentiationKeywords({
+                  agentId,
+                  blueprintId: normalizedBlueprintId,
+                  keywords: differentiationKeywords,
+                });
               sendEvent({ type: "final_text", text: finalized.cleanText });
               sendEvent({
                 type: "meta",
                 roadmap: roadmapWithGeneratedContent,
                 completedStepIds: finalized.completedStepIds,
                 validation: validationMeta,
+                differentiationKeywords: persistedDifferentiationKeywords,
               });
               sendEvent({ type: "done" });
             } catch (streamError: unknown) {
@@ -1309,11 +1578,21 @@ export async function POST(req: Request) {
       roadmapCandidate: roadmapWithGeneratedContent ?? roadmapForAutoFill,
       completedStepIds: finalized.completedStepIds,
     });
+    const differentiationKeywords = resolveDifferentiationKeywords({
+      aiContent,
+      userMessage: normalizedMessage,
+    });
+    const persistedDifferentiationKeywords = await persistDifferentiationKeywords({
+      agentId,
+      blueprintId: normalizedBlueprintId,
+      keywords: differentiationKeywords,
+    });
     return NextResponse.json({
       text: finalized.cleanText,
       roadmap: roadmapWithGeneratedContent,
       completedStepIds: finalized.completedStepIds,
       validation: validationMeta,
+      differentiationKeywords: persistedDifferentiationKeywords,
     });
   } catch (error: unknown) {
     console.error("Chat Error:", error);

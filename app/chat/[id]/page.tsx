@@ -67,7 +67,7 @@ type CourseStep = {
 
 type BlueprintRecord = {
   id: string;
-  logic_template: string | null;
+  logic_template: unknown;
   ai_model_config: AiModelConfig | null;
   validation_library: string[];
 };
@@ -185,6 +185,33 @@ const composeSystemPrompt = (logicTemplate: string, expertisePrompt: string) => 
   return [base, expertise].filter((entry) => entry.length > 0).join("\n\n");
 };
 
+const toLogicTemplateText = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  const record = asObject(value);
+  if (!record) {
+    return "";
+  }
+
+  const textCandidates = [
+    record.pedagogical_rules,
+    record.prompt,
+    record.instructions,
+    record.rules_text,
+    record.base_rules,
+  ]
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry.length > 0);
+
+  if (textCandidates.length > 0) {
+    return textCandidates.join("\n\n");
+  }
+
+  return "";
+};
+
 const buildFallbackAgent = (id: string): AgentRecord => {
     const fallbackPrompt =
       "Du bist ein professioneller Agent der Zasterix-Organisation.";
@@ -227,10 +254,7 @@ const toAgentRecord = ({
     typeof record.system_prompt === "string"
       ? record.system_prompt
       : "Du bist ein professioneller Agent der Zasterix-Organisation.";
-  const logicTemplate =
-    blueprint?.logic_template && blueprint.logic_template.trim().length > 0
-      ? blueprint.logic_template
-      : "";
+  const logicTemplate = toLogicTemplateText(blueprint?.logic_template);
   const finalSystemPrompt = composeSystemPrompt(logicTemplate, systemPrompt) || systemPrompt;
   const parentTemplateId =
     typeof record.parent_template_id === "string"
@@ -307,10 +331,7 @@ async function getAgent(id: string): Promise<AgentRecord> {
     } else if (blueprintData) {
       blueprint = {
         id: blueprintData.id,
-        logic_template:
-          typeof blueprintData.logic_template === "string"
-            ? blueprintData.logic_template
-            : null,
+        logic_template: blueprintData.logic_template,
         ai_model_config: toAiModelConfig(blueprintData.ai_model_config),
         validation_library: toValidationLibrary(blueprintData.validation_library),
       };

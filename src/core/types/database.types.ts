@@ -109,7 +109,7 @@ export interface Database {
         Row: {
           id: string;
           name: string;
-          logic_template: string;
+          logic_template: Json;
           ai_model_config: Json;
           validation_library: Json;
           created_at: string;
@@ -117,7 +117,7 @@ export interface Database {
         Insert: {
           id?: string;
           name: string;
-          logic_template?: string;
+          logic_template?: Json;
           ai_model_config?: Json;
           validation_library?: Json;
           created_at?: string;
@@ -125,7 +125,7 @@ export interface Database {
         Update: {
           id?: string;
           name?: string;
-          logic_template?: string;
+          logic_template?: Json;
           ai_model_config?: Json;
           validation_library?: Json;
           created_at?: string;

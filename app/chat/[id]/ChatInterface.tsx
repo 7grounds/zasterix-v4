@@ -538,6 +538,14 @@ export default function ChatInterface({
     const resolvedValidationLibrary = toValidationLibrary(
       agent.validation_library ?? agent.validationLibrary,
     );
+    const resolvedBlueprintId =
+      typeof agent.parent_template_id === "string" &&
+      agent.parent_template_id.trim().length > 0
+        ? agent.parent_template_id.trim()
+        : typeof agent.parentTemplateId === "string" &&
+            agent.parentTemplateId.trim().length > 0
+          ? agent.parentTemplateId.trim()
+          : undefined;
     const assistantMessageId = createId();
     const updateAssistantMessage = (content: string) => {
       setMessages((previous) =>
@@ -568,6 +576,7 @@ export default function ChatInterface({
         body: JSON.stringify({
           message: messageForAi,
           agentId: agent.id,
+          blueprintId: resolvedBlueprintId,
           systemPrompt: resolvedSystemPrompt,
           agentName: agent.name,
           aiModelConfig: resolvedModelConfig,
