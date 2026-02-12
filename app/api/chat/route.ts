@@ -2,15 +2,17 @@
  * @MODULE_ID app.api.chat
  * @STAGE admin
  * @DATA_INPUTS ["message", "agentId", "systemPrompt", "history", "hiddenInstruction", "stream", "autoFillStep", "roadmapSnapshot"]
- * @REQUIRED_TOOLS ["openai", "supabase-js"]
+ * @REQUIRED_TOOLS ["ai-sdk", "supabase-js"]
  */
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { generateText, streamText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createClient } from "@supabase/supabase-js";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const chatModel = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
+const openaiProvider = process.env.OPENAI_API_KEY
+  ? createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -357,6 +359,27 @@ const sanitizeAssistantContentPartial = (value: string) => {
   return cleaned.replace(/UPDATE_STEP_[\d_]*$/g, "");
 };
 
+const STREAM_CHUNK_SIZE = 28;
+
+const emitChunkedText = ({
+  text,
+  sendEvent,
+}: {
+  text: string;
+  sendEvent: (event: Record<string, unknown>) => void;
+}) => {
+  if (!text) {
+    return;
+  }
+
+  for (let index = 0; index < text.length; index += STREAM_CHUNK_SIZE) {
+    sendEvent({
+      type: "chunk",
+      text: text.slice(index, index + STREAM_CHUNK_SIZE),
+    });
+  }
+};
+
 const finalizeAiPayload = async ({
   aiContent,
   userMessage,
@@ -480,6 +503,10 @@ export async function POST(req: Request) {
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "OPENAI_API_KEY fehlt." }, { status: 500 });
+    }
+    const aiProvider = openaiProvider;
+    if (!aiProvider) {
+      return NextResponse.json({ error: "AI provider unavailable." }, { status: 500 });
     }
 
     const globalInstruction = `
@@ -623,17 +650,16 @@ export async function POST(req: Request) {
 
           const run = async () => {
             try {
-              const completionStream = await openai.chat.completions.create({
-                model: "gpt-4-turbo-preview",
+              const completionStream = streamText({
+                model: aiProvider(chatModel),
                 messages: requestMessages,
-                stream: true,
+                temperature: 0.2,
               });
 
               let aiContent = "";
               let visibleLength = 0;
 
-              for await (const chunk of completionStream) {
-                const deltaText = chunk.choices[0]?.delta?.content;
+              for await (const deltaText of completionStream.textStream) {
                 if (typeof deltaText !== "string" || deltaText.length === 0) {
                   continue;
                 }
@@ -643,7 +669,7 @@ export async function POST(req: Request) {
                 const nextChunk = visibleText.slice(visibleLength);
                 if (nextChunk.length > 0) {
                   visibleLength = visibleText.length;
-                  sendEvent({ type: "chunk", text: nextChunk });
+                  emitChunkedText({ text: nextChunk, sendEvent });
                 }
               }
 
@@ -692,16 +718,18 @@ export async function POST(req: Request) {
           "Content-Type": "application/x-ndjson; charset=utf-8",
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
         },
       });
     }
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
+    const response = await generateText({
+      model: aiProvider(chatModel),
       messages: requestMessages,
+      temperature: 0.2,
     });
 
-    const aiContent = response.choices[0]?.message?.content ?? "";
+    const aiContent = response.text ?? "";
     const finalized = await finalizeAiPayload({
       aiContent,
       userMessage: normalizedMessage,

@@ -8,6 +8,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import ReactMarkdown from "react-markdown";
 
 type AgentRecord = {
   id: string;
@@ -641,7 +642,9 @@ PFLICHTMODUS LEHRER:
                   : "self-end rounded-tr-none bg-[#056162]"
               }`}
             >
-              {message.content}
+              <div className="break-words [overflow-wrap:anywhere] [&_a]:break-all [&_code]:break-words [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-relaxed [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-[#0f1a20] [&_pre]:p-3 [&_ul]:list-disc [&_ul]:pl-5">
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+              </div>
             </div>
           ))}
           {loading && waitingForFirstChunk ? (
