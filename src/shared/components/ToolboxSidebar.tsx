@@ -6,8 +6,18 @@
  */
 import { YuhConnector } from "@/shared/tools/YuhConnector";
 import { BoardroomLink } from "@/shared/components/BoardroomLink";
+import Link from "next/link";
 
 export const ToolboxSidebar = () => {
+  const navigationLinks = [
+    {
+      id: "quick-links",
+      label: "Quick Links",
+      href: "/admin/links",
+      description: "Command Center fuer App- und Infrastruktur-Links.",
+    },
+  ];
+
   const tools = [
     {
       id: "yuh-connector",
@@ -55,6 +65,21 @@ export const ToolboxSidebar = () => {
             </div>
             <div className="mt-4">{tool.action}</div>
           </div>
+        ))}
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Navigation</p>
+        {navigationLinks.map((item) => (
+          <Link
+            key={item.id}
+            href={item.href}
+            className="block rounded-2xl border border-slate-200/70 bg-slate-50/70 px-4 py-3 transition hover:border-slate-300 hover:bg-white"
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-800">
+              {item.label}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{item.description}</p>
+          </Link>
         ))}
       </div>
       <div className="pt-2">
