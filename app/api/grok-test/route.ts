@@ -8,7 +8,7 @@ export async function POST(req: Request) {
 
     if (!key) return NextResponse.json({ error: "XAI_API_KEY_MISSING" }, { status: 500 });
 
-    // We use the 'x' endpoint (xAI / Grok)
+    // Using the official x.ai endpoint
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -26,9 +26,9 @@ export async function POST(req: Request) {
 
     if (!response.ok) {
       return NextResponse.json({ 
-        error: "XAI_REJECTED_SIGNAL", 
+        error: "XAI_REJECTED", 
         status: response.status,
-        raw_error: data 
+        details: data 
       }, { status: response.status });
     }
 
@@ -38,6 +38,6 @@ export async function POST(req: Request) {
     });
 
   } catch (error: any) {
-    return NextResponse.json({ error: "INTERNAL_CRASH", msg: error.message }, { status: 500 });
+    return NextResponse.json({ error: "SERVER_CRASH", msg: error.message }, { status: 500 });
   }
 }
