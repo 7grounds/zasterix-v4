@@ -5,7 +5,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
   title: 'Origo V4 | Command Center',
-  description: 'AI-Driven Operation System',
+  description: 'Zentrales KI-Betriebssystem',
 }
 
 export default function RootLayout({
@@ -15,8 +15,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="de">
-      <body className={inter.className}>
-        {/* Kein Header mehr hier – das Dashboard bringt alles mit */}
+      <body className={`${inter.className} bg-slate-50 antialiased`}>
+        {/* Hier gibt es keinen Header mehr, da dein Dashboard-Layout alles steuert */}
         {children}
       </body>
     </html>
