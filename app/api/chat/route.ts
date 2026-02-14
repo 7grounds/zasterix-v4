@@ -4,6 +4,7 @@ import { generateText, streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createClient } from "@supabase/supabase-js";
 
+// Initialize xAI Provider
 const xai = createOpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
@@ -27,7 +28,9 @@ export async function POST(req: Request) {
       : { data: null };
     
     const agent = dbAgent as any;
-    const modelName = agent?.ai_model_config?.model || "grok-2-1212";
+    
+    // FIX: Using 'grok-beta' which is the most universally accessible model name for xAI API
+    const modelName = agent?.ai_model_config?.model || "grok-beta";
 
     const requestMessages = [
       { role: "system" as const, content: agent?.system_prompt || "You are an Origo Agent." },
@@ -53,6 +56,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ text });
 
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Enhanced error logging to catch the exact 'Bad Request' reason in Vercel
+    console.error("XAI_ERROR:", error);
+    return NextResponse.json({ error: error.message || "Bad Request" }, { status: 400 });
   }
 }
