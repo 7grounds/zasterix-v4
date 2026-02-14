@@ -1,63 +1,44 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
-import { generateText, streamText } from "ai";
+import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import { createClient } from "@supabase/supabase-js";
 
-// Initialize xAI Provider
+// 1. Initialize xAI with NO extra configuration
 const xai = createOpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
 });
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(req: Request) {
   try {
-    const { message, agentId, history = [], stream = false } = await req.json();
+    const { message, history = [] } = await req.json();
 
     if (!process.env.XAI_API_KEY) {
       return NextResponse.json({ error: "XAI_API_KEY missing" }, { status: 500 });
     }
 
-    const { data: dbAgent } = agentId 
-      ? await supabaseAdmin.from("agent_templates").select("*").eq("id", agentId).single()
-      : { data: null };
-    
-    const agent = dbAgent as any;
-    
-    // FIX: Using 'grok-beta' which is the most universally accessible model name for xAI API
-    const modelName = agent?.ai_model_config?.model || "grok-beta";
+    // 2. USE THE MOST STABLE MODEL NAME
+    // Many accounts currently require 'grok-beta' or 'grok-2'
+    const model = xai("grok-beta");
 
-    const requestMessages = [
-      { role: "system" as const, content: agent?.system_prompt || "You are an Origo Agent." },
-      ...history,
-      { role: "user" as const, content: message },
-    ];
-
-    if (stream) {
-      const result = await streamText({
-        model: xai(modelName),
-        messages: requestMessages as any,
-        temperature: 0.7,
-      });
-      return result.toTextStreamResponse();
-    }
-
+    // 3. GENERATE TEXT WITHOUT STREAMING (To avoid 'stream_options' errors)
     const { text } = await generateText({
-      model: xai(modelName),
-      messages: requestMessages as any,
-      temperature: 0.7,
+      model: model,
+      messages: [
+        ...history,
+        { role: "user", content: message }
+      ],
+      // REMOVE temperature/top_p for this test to ensure absolute compatibility
     });
 
     return NextResponse.json({ text });
 
   } catch (error: any) {
-    // Enhanced error logging to catch the exact 'Bad Request' reason in Vercel
-    console.error("XAI_ERROR:", error);
-    return NextResponse.json({ error: error.message || "Bad Request" }, { status: 400 });
+    // This will print the EXACT error from xAI in your Vercel logs
+    console.error("XAI_DETAILED_ERROR:", error);
+    return NextResponse.json({ 
+      error: error.message || "Bad Request",
+      details: error.data // This often contains the specific 'Argument not supported' message
+    }, { status: 400 });
   }
 }
