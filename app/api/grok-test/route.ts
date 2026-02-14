@@ -1,40 +1,43 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 export async function POST(req: Request) {
   try {
-    const { message } = await req.json();
-    const apiKey = process.env.XAI_API_KEY;
+    const { message, history = [], targetTitle = "Discussion Leader" } = await req.json();
 
-    if (!apiKey) {
-      return NextResponse.json({ error: "XAI_API_KEY missing in Vercel" }, { status: 500 });
-    }
+    const { data: agent } = await supabase
+      .from("agent_templates")
+      .select("system_prompt, provider, model_name, name")
+      .eq("name", targetTitle)
+      .single();
 
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
+    if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+
+    const isGroq = agent.provider === 'groq';
+    const apiKey = isGroq ? process.env.GROQ_API_KEY : process.env.XAI_API_KEY;
+
+    const res = await fetch(isGroq ? "https://api.groq.com/openai/v1/chat/completions" : "https://api.x.ai/v1/chat/completions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey.trim()}`,
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey?.trim()}` },
       body: JSON.stringify({
-        model: "grok-4", // Stable Feb 2026 ID
+        model: agent.model_name,
         messages: [
-          { role: "system", content: "You are a diagnostic assistant." },
-          { role: "user", content: message || "Ping" }
+          { role: "system", content: `${agent.system_prompt} ALWAYS respond in English. Format: [${agent.name}]: Text` },
+          ...history.slice(-3),
+          { role: "user", content: message }
         ],
-        temperature: 0
+        temperature: 0.5,
+        max_tokens: 120
       }),
     });
 
-    const data = await response.json();
+    const data = await res.json();
+    return NextResponse.json({ text: data.choices[0].message.content, title: agent.name });
 
-    if (!response.ok) {
-      return NextResponse.json({ error: "XAI_REFUSED", details: data }, { status: response.status });
-    }
-
-    return NextResponse.json({ text: data.choices[0].message.content });
-
-  } catch (error: any) {
-    return NextResponse.json({ error: "SERVER_CRASH", msg: error.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Internal Error" }, { status: 500 });
   }
 }
