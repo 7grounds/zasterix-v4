@@ -1,9 +1,10 @@
 /**
  * @MODULE_ID app.api.chat
- * @VERSION Origo-V4-Final
+ * @VERSION Origo-V4-Build-Fix
  */
 import { NextResponse } from "next/server";
-import { generateText, streamText, CoreMessage } from "ai";
+// Removed CoreMessage from imports to avoid version conflicts
+import { generateText, streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGroq } from "@ai-sdk/groq";
 import { createClient } from "@supabase/supabase-js";
@@ -61,10 +62,11 @@ export async function POST(req: Request) {
       dbAgent?.validation_library?.length > 0 ? `VALIDATION_LIBRARY: ${JSON.stringify(dbAgent.validation_library)}` : ""
     ].filter(Boolean).join("\n\n");
 
-    const requestMessages: CoreMessage[] = [
-      { role: "system", content: fullSystemPrompt },
+    // Removed the : CoreMessage[] type annotation to allow auto-inference
+    const requestMessages = [
+      { role: "system" as const, content: fullSystemPrompt },
       ...history,
-      { role: "user", content: message },
+      { role: "user" as const, content: message },
     ];
 
     if (stream) {
@@ -74,7 +76,6 @@ export async function POST(req: Request) {
         temperature: config.temperature ?? 0.7,
       });
 
-      // Fixed: uses toTextStreamResponse for compatibility with your SDK version
       return result.toTextStreamResponse();
     }
 
