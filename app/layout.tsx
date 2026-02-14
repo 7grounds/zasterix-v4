@@ -1,45 +1,24 @@
-/**
- * @MODULE_ID app.root-layout
- * @STAGE global
- * @DATA_INPUTS ["children"]
- * @REQUIRED_TOOLS ["AppShell", "TenantProvider"]
- */
-import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
-import { AppShell } from "@/shared/components/AppShell";
-import { TenantProvider } from "@/core/tenant-context";
-import "./globals.css";
+import './globals.css'
+import { Inter } from 'next/font/google'
 
-const geistSans = Inter({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ['latin'] })
 
-const geistMono = JetBrains_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "Zasterix | AI-Driven Wealth Engineering",
-  description:
-    "AI-native wealth engineering architecture for Yuh-driven financial journeys.",
-};
+export const metadata = {
+  title: 'Origo V4 | Command Center',
+  description: 'AI-Driven Operation System',
+}
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <AppShell>
-          <TenantProvider>{children}</TenantProvider>
-        </AppShell>
+    <html lang="de">
+      <body className={inter.className}>
+        {/* Kein Header mehr hier – das Dashboard bringt alles mit */}
+        {children}
       </body>
     </html>
-  );
+  )
 }
