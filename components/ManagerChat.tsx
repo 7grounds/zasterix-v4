@@ -5,11 +5,10 @@ import { supabase } from '../lib/supabase';
 
 export default function ManagerChat() {
   const [messages, setMessages] = useState<any[]>([
-    { role: 'manager', content: 'Manager Alpha online. System check complete. Awaiting instructions.' }
+    { role: 'manager', content: 'Manager Alpha online. Accessing agent templates. Ready for session trigger.' }
   ]);
   const [input, setInput] = useState('');
   const [sessionStep, setSessionStep] = useState(0); 
-  const [sessionData, setSessionData] = useState({ topic: '', owner: '', partners: '' });
   const [activeLeader, setActiveLeader] = useState<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -25,95 +24,102 @@ export default function ManagerChat() {
     setMessages(prev => [...prev, { role: 'user', content: cmd }]);
     setInput('');
 
-    setTimeout(async () => {
-      // --- STEP 1: MANAGER CALLS LEADER ---
-      if (cmd.toLowerCase().includes('session') && sessionStep === 0) {
-        const { data: leader } = await supabase.from('agent_templates').select('*').eq('code_name', 'DISC_LEADER').single();
-        if (leader) {
-          setActiveLeader(leader);
-          setMessages(prev => [...prev, { role: 'manager', content: `Understood. Summoning ${leader.name} for session preparation...` }]);
-          
-          setTimeout(() => {
-            setMessages(prev => [...prev, { 
-              role: 'leader', 
-              content: `Discussion Leader active. I am taking over the structuring process. What is the primary TOPIC of this session?` 
-            }]);
-            setSessionStep(1);
-          }, 1000);
-        }
-        return;
-      }
+    // --- PHASE 1: SUMMON LEADER & EXTRACT MODEL CONFIG ---
+    if (cmd.toLowerCase().includes('session') && sessionStep === 0) {
+      const { data: leader } = await supabase
+        .from('agent_templates')
+        .select('*')
+        .eq('code_name', 'DISC_LEADER')
+        .single();
 
-      // --- STEP 2: ANALYZE TOPIC & PROPOSE AGENTS ---
-      if (sessionStep === 1) {
-        setSessionData(prev => ({ ...prev, topic: cmd }));
+      if (leader) {
+        setActiveLeader(leader);
         
-        const { data: availableAgents } = await supabase.from('agent_templates').select('name, category').neq('code_name', 'DISC_LEADER');
+        // Check the model config column
+        const config = leader.ai_model_config?.toLowerCase() || 'groq';
+        const modelLabel = config.includes('open') ? 'OpenAI' : 'Groq';
         
-        let proposal = "";
-        const lowerCmd = cmd.toLowerCase();
-        if (lowerCmd.includes('code') || lowerCmd.includes('app') || lowerCmd.includes('dev')) {
-          proposal = "Architect & Sentinel";
-        } else if (lowerCmd.includes('marketing') || lowerCmd.includes('growth') || lowerCmd.includes('sales')) {
-          proposal = "Growth Agent";
-        } else {
-          proposal = availableAgents ? availableAgents.map(a => a.name).join(', ') : "Special Task Force";
-        }
-
-        setTimeout(() => {
-          setMessages(prev => [...prev, { 
-            role: 'leader', 
-            content: `Topic "${cmd}" analyzed. \n\nI propose the following lineup: \n👥 ${proposal} \n\nShould I summon these agents, or do we require a NEW CREATION?` 
-          }]);
-          setSessionStep(2);
-        }, 800);
-      } 
-      
-      // --- STEP 3: CONFIRMATION & START ---
-      else if (sessionStep === 2) {
-        setSessionData(prev => ({ ...prev, partners: cmd }));
+        setMessages(prev => [...prev, { 
+          role: 'manager', 
+          content: `Summoning ${leader.name}. Engine: ${modelLabel}. Protocol: English.` 
+        }]);
         
         setTimeout(() => {
           setMessages(prev => [...prev, { 
             role: 'leader', 
-            content: `Lineup confirmed: ${cmd}. \n\nAll parameters set. Opening communication channels.\n\n>>> START.` 
+            content: `Discussion Leader active. Optimized via ${modelLabel}. \n\nWhat is the TOPIC of this session?` 
           }]);
-          setSessionStep(0);
+          setSessionStep(1);
         }, 800);
       }
-      else {
-        if (!activeLeader) {
-            setMessages(prev => [...prev, { role: 'manager', content: 'Standing by for further commands.' }]);
-        }
-      }
-    }, 500);
+      return;
+    }
+
+    // --- PHASE 2: TOPIC & SWARM SUGGESTION ---
+    if (sessionStep === 1) {
+      const { data: swarm } = await supabase
+        .from('agent_templates')
+        .select('name, ai_model_config')
+        .eq('is_active', true)
+        .neq('code_name', 'DISC_LEADER');
+
+      setTimeout(() => {
+        const list = swarm && swarm.length > 0 
+          ? swarm.map(a => `${a.name} (${a.ai_model_config || 'Groq'})`).join(', ') 
+          : "Standard Units";
+
+        setMessages(prev => [...prev, { 
+          role: 'leader', 
+          content: `Topic "${cmd}" analyzed. \n\nSuggested Swarm Composition: \n👥 ${list} \n\nConfirm lineup or request a NEW SPECIALIST?` 
+        }]);
+        setSessionStep(2);
+      }, 700);
+      return;
+    } 
+
+    // --- PHASE 3: START ---
+    if (sessionStep === 2) {
+      setTimeout(() => {
+        setMessages(prev => [...prev, { 
+          role: 'leader', 
+          content: `Session parameters finalized. \n\n>>> START.` 
+        }]);
+        setSessionStep(0);
+      }, 600);
+      return;
+    }
+
+    setMessages(prev => [...prev, { role: 'manager', content: 'Standing by.' }]);
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Dynamic Header */}
-      <div className="px-10 py-5 border-b border-slate-50 flex justify-between items-center bg-white/80 backdrop-blur-md sticky top-0 z-10">
-        <div className="flex items-center space-x-3">
-          <div className={`h-2.5 w-2.5 rounded-full ${activeLeader ? 'bg-orange-500 animate-pulse' : 'bg-green-500'}`}></div>
-          <span className="text-[10px] font-mono font-black uppercase tracking-[0.2em] text-slate-400">
-            {activeLeader ? `DISCUSSION_LEADER_ACTIVE` : 'ORIGO_CORE_IDLE'}
+    <div className="flex flex-col h-full bg-white font-sans overflow-hidden">
+      {/* Dynamic Status Header */}
+      <div className="px-10 py-6 border-b border-slate-50 flex justify-between items-center bg-white/80 backdrop-blur-md sticky top-0 z-10">
+        <div className="flex items-center space-x-4">
+          <div className={`h-3 w-3 rounded-full ${activeLeader ? 'bg-orange-600 animate-pulse' : 'bg-green-500'}`}></div>
+          <span className="text-[11px] font-mono font-black uppercase tracking-[0.25em] text-slate-400">
+            {activeLeader ? `ACTIVE_NODE: ${activeLeader.name}` : 'SYSTEM_STATUS: STANDBY'}
           </span>
         </div>
+        {activeLeader && (
+          <span className="text-[9px] font-bold text-orange-600 uppercase border border-orange-100 px-3 py-1 rounded-full bg-orange-50">
+            {activeLeader.ai_model_config || 'Groq'} Enabled
+          </span>
+        )}
       </div>
 
-      {/* Chat Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 md:p-16 space-y-12">
+      {/* Massive Chat Flow */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-10 md:p-20 space-y-12">
         {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-500`}>
-            <div className={`max-w-[85%] md:max-w-[70%] p-8 rounded-[2.5rem] shadow-sm ${
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
+            <div className={`max-w-[85%] md:max-w-[75%] p-10 rounded-[3rem] shadow-sm ${
               msg.role === 'user' ? 'bg-orange-600 text-white rounded-tr-none' : 
-              msg.role === 'leader' ? 'bg-slate-900 text-orange-400 rounded-tl-none border-l-4 border-orange-500 shadow-xl' : 
-              'bg-slate-50 border border-slate-100 text-slate-800 rounded-tl-none'
+              msg.role === 'leader' ? 'bg-slate-900 text-orange-400 rounded-tl-none border-l-8 border-orange-600 shadow-xl' : 
+              'bg-slate-50 border border-slate-100 text-slate-900 rounded-tl-none'
             }`}>
-              <p className="text-[10px] uppercase font-black tracking-widest mb-3 opacity-40">
-                {msg.role === 'leader' ? 'Discussion Leader' : msg.role === 'manager' ? 'Manager Alpha' : 'Owner'}
-              </p>
-              <p className="text-xl md:text-2xl italic font-medium leading-relaxed tracking-tight whitespace-pre-line">
+              <p className="text-[10px] uppercase font-black tracking-widest mb-4 opacity-30">{msg.role}</p>
+              <p className="text-2xl md:text-4xl italic font-medium leading-tight tracking-tight whitespace-pre-line">
                 {msg.content}
               </p>
             </div>
@@ -121,16 +127,16 @@ export default function ManagerChat() {
         ))}
       </div>
 
-      {/* Input Area */}
-      <div className="p-8 md:p-12 bg-white border-t border-slate-100">
+      {/* Giant Command Input */}
+      <div className="p-10 md:p-16 bg-white border-t border-slate-50 shadow-2xl">
         <form onSubmit={sendCommand} className="max-w-6xl mx-auto relative group">
           <input 
             type="text" value={input} onChange={(e) => setInput(e.target.value)}
-            placeholder={activeLeader ? "Message to Leader..." : "Enter command..."} 
-            className="w-full bg-slate-100 rounded-[2.5rem] px-10 py-7 text-xl md:text-2xl outline-none border-none shadow-inner focus:bg-white focus:ring-4 focus:ring-orange-50 transition-all"
+            placeholder={activeLeader ? "Send to Leader..." : "Master Command..."} 
+            className="w-full bg-slate-100 rounded-[3rem] px-12 py-8 text-2xl md:text-3xl outline-none border-none shadow-inner focus:bg-white transition-all font-medium italic"
           />
-          <button className="absolute right-4 top-4 bottom-4 aspect-square bg-orange-600 text-white rounded-full flex items-center justify-center hover:bg-orange-500 transition-all shadow-xl active:scale-95">
-            <span className="text-2xl">🚀</span>
+          <button className="absolute right-4 top-4 bottom-4 aspect-square bg-orange-600 text-white rounded-full flex items-center justify-center shadow-xl hover:scale-105 transition-all">
+            <span className="text-3xl">🚀</span>
           </button>
         </form>
       </div>
