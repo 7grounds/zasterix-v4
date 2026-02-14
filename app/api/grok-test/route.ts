@@ -4,20 +4,21 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const { message } = await req.json();
-    const apiKey = process.env.XAI_API_KEY;
+    const key = process.env.XAI_API_KEY;
 
-    if (!apiKey) return NextResponse.json({ error: "Missing XAI_API_KEY" }, { status: 500 });
+    if (!key) return NextResponse.json({ error: "XAI_API_KEY_MISSING" }, { status: 500 });
 
+    // We use the 'x' endpoint (xAI / Grok)
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        "Authorization": `Bearer ${key.trim()}`,
       },
       body: JSON.stringify({
-        model: "grok-2-1212", // The most stable ID for testing
-        messages: [{ role: "user", content: message }],
-        temperature: 0,
+        model: "grok-2-1212", 
+        messages: [{ role: "user", content: message || "Ping" }],
+        temperature: 0
       }),
     });
 
@@ -25,13 +26,18 @@ export async function POST(req: Request) {
 
     if (!response.ok) {
       return NextResponse.json({ 
-        error: "xAI Refused Request", 
-        details: data 
+        error: "XAI_REJECTED_SIGNAL", 
+        status: response.status,
+        raw_error: data 
       }, { status: response.status });
     }
 
-    return NextResponse.json({ text: data.choices[0].message.content });
+    return NextResponse.json({ 
+      success: true, 
+      text: data.choices[0].message.content 
+    });
+
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "INTERNAL_CRASH", msg: error.message }, { status: 500 });
   }
 }
