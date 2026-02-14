@@ -1,89 +1,54 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * @MODULE_ID app.api.chat
- * @VERSION Origo-V4-Dynamic-Lookup
- * @DESCRIPTION Sucht Agenten nach Name und nutzt dessen DB-Konfiguration für Groq oder xAI.
+ * @VERSION Origo-V4-Pure-Titles
  */
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 export async function POST(req: Request) {
   try {
-    const { message, history = [] } = await req.json();
+    const { message, history = [], targetTitle = "Discussion Leader" } = await req.json();
 
-    // 1. DYNAMISCHE SUCHE: Wir holen uns die Config für den Discussion Leader
-    const { data: agent, error: dbError } = await supabase
+    // 1. Suche via Titel (name-Spalte in DB)
+    const { data: agent } = await supabase
       .from("agent_templates")
       .select("system_prompt, provider, model_name, name")
-      .eq("name", "Discussion Leader")
+      .eq("name", targetTitle)
       .single();
 
-    if (dbError || !agent) {
-      return NextResponse.json({ 
-        error: "Agent 'Discussion Leader' nicht gefunden.", 
-        details: dbError 
-      }, { status: 404 });
-    }
+    if (!agent) return NextResponse.json({ error: "Title not found" }, { status: 404 });
 
-    const agentData = agent as any;
-    const rawProvider = agentData.provider?.toLowerCase() || 'xai';
-    
-    // 2. GATEWAY-LOGIK: Mapping zwischen DB-Eintrag und API-Endpunkt
-    const isGroq = rawProvider === 'groq';
-    const config = {
-      url: isGroq 
-        ? "https://api.groq.com/openai/v1/chat/completions" 
-        : "https://api.x.ai/v1/chat/completions",
-      key: isGroq 
-        ? process.env.GROQ_API_KEY 
-        : process.env.XAI_API_KEY,
-      model: agentData.model_name
-    };
+    const isGroq = agent.provider === 'groq';
+    const apiKey = isGroq ? process.env.GROQ_API_KEY : process.env.XAI_API_KEY;
 
-    if (!config.key) {
-      return NextResponse.json({ error: `API Key für ${rawProvider} fehlt in Vercel` }, { status: 500 });
-    }
-
-    // 3. PAYLOAD: OpenAI-kompatibles Format für beide Provider
-    const response = await fetch(config.url, {
+    // 2. Request mit striktem Titel-Format
+    const res = await fetch(isGroq ? "https://api.groq.com/openai/v1/chat/completions" : "https://api.x.ai/v1/chat/completions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${config.key.trim()}`,
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey?.trim()}` },
       body: JSON.stringify({
-        model: config.model,
+        model: agent.model_name,
         messages: [
-          { role: "system", content: agentData.system_prompt },
-          ...history.filter((h: any) => h.content && h.content.trim() !== ""),
+          { role: "system", content: `${agent.system_prompt} Antworte IMMER im Format [${agent.name}]: Text. Max 2 Sätze.` },
+          ...history.slice(-3),
           { role: "user", content: message }
         ],
-        temperature: 0.7
+        temperature: 0.5,
+        max_tokens: 100
       }),
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json({ error: "GATEWAY_ERROR", details: data }, { status: 400 });
-    }
-
-    // 4. RESPONSE: Rückgabe an dein Frontend
+    const data = await res.json();
     return NextResponse.json({ 
-      text: data.choices[0].message.content,
-      metadata: {
-        provider: rawProvider,
-        model: config.model,
-        agent: agentData.name
-      }
+      text: data.choices[0].message.content, 
+      title: agent.name 
     });
 
-  } catch (error: any) {
-    return NextResponse.json({ error: "CRASH", msg: error.message }, { status: 500 });
+  } catch (e: any) {
+    return NextResponse.json({ error: "Fail" }, { status: 500 });
   }
 }
+
+        
