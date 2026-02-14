@@ -1,15 +1,24 @@
-/**
- * @MODULE_ID app.home.landing
- * @STAGE global
- * @DATA_INPUTS ["none"]
- * @REQUIRED_TOOLS []
- */
-export const dynamic = 'force-dynamic';
+'use client';
+import React, { useState } from 'react';
+import DashboardLayout from '@/components/DashboardLayout';
+import AgentList from '@/components/AgentList';
+import ProjectHistory from '@/components/ProjectHistory';
 
-export default function Home() {
+export default function App() {
+  const [activePage, setActivePage] = useState('agents');
+
   return (
-    <div className="mx-auto flex w-full max-w-2xl items-center justify-center rounded-3xl border border-slate-800/70 bg-slate-950 px-8 py-16 text-center text-3xl font-semibold text-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.4)]">
-      es funktioniert
-    </div>
+    <DashboardLayout activePage={activePage} setActivePage={setActivePage}>
+      <div className="animate-in fade-in duration-500">
+        {activePage === 'agents' && <AgentList />}
+        {activePage === 'history' && <ProjectHistory />}
+        {activePage === 'dashboard' && (
+          <div className="p-10">
+            <h1 className="text-3xl font-bold">Willkommen im Command Center</h1>
+            <p className="mt-4 text-gray-500 italic">Wähle einen Bereich aus der Sidebar, um zu starten.</p>
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
   );
 }
