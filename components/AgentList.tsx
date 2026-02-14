@@ -10,17 +10,11 @@ export default function AgentList() {
   useEffect(() => {
     async function fetchAgents() {
       try {
-        const { data, error } = await (supabase as any)
-          .from('agent_templates')
-          .select('*');
-        
-        if (error) {
-          console.error('Supabase Fehler:', error);
-        } else {
-          setAgents(data || []);
-        }
-      } catch (err) {
-        console.error('System Fehler:', err);
+        const { data, error } = await (supabase as any).from('agent_templates').select('*');
+        if (error) console.error(error);
+        else setAgents(data || []);
+      } catch (e) {
+        console.error(e);
       } finally {
         setLoading(false);
       }
@@ -28,37 +22,31 @@ export default function AgentList() {
     fetchAgents();
   }, []);
 
-  if (loading) {
-    return <div className="p-20 text-center text-slate-400 font-mono">SYNCHRONISIERE_KERN...</div>;
-  }
+  if (loading) return <div className="p-10 font-mono text-slate-400">LOADING_CORE...</div>;
 
   return (
-    <div className="p-8">
-      <div className="mb-10 border-b border-slate-100 pb-5">
-        <h2 className="text-2xl font-black text-slate-900 uppercase italic">Agenten-Schwarm</h2>
-        <p className="text-[10px] text-slate-400 font-mono mt-1">Status: Verbunden mit Supabase</p>
+    <div className="p-8 bg-slate-50 min-h-screen">
+      <div className="mb-8">
+        <h2 className="text-4xl font-black italic tracking-tighter text-slate-900 uppercase">Agenten-Schwarm</h2>
+        <p className="text-xs font-bold text-blue-600 tracking-widest mt-2 uppercase">Status: Aktiv verbunden</p>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {agents.map((agent: any) => (
-          <div key={agent.id} className="bg-white border-2 border-slate-50 rounded-2xl p-6 shadow-sm">
-            <div className="flex justify-between mb-4">
-              <span className="text-[9px] font-mono bg-slate-900 text-white px-2 py-1 rounded">
+          <div key={agent.id} className="bg-white border-2 border-slate-100 rounded-3xl p-6 shadow-sm hover:shadow-xl transition-all">
+            <div className="flex justify-between items-start mb-6">
+              <span className="text-[10px] font-mono bg-slate-900 text-white px-2 py-1 rounded-lg italic">
                 {agent.code_name || 'UNIT'}
               </span>
-              <div className={`h-3 w-3 rounded-full ${agent.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
+              <div className={`h-3 w-3 rounded-full ${agent.is_active ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-red-500'}`} />
             </div>
-            <h3 className="font-bold text-slate-900 text-xl">{agent.name || 'Unbenannt'}</h3>
-            <p className="text-[10px] text-slate-400 uppercase font-black mt-1">{agent.category || 'Standard'}</p>
+            <h3 className="text-2xl font-bold text-slate-900 leading-tight mb-1">{agent.name}</h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{agent.category}</p>
+            <div className="h-1 w-12 bg-slate-100 mb-4"></div>
+            <p className="text-xs text-slate-500 italic line-clamp-2">{agent.system_prompt || 'Bereit für Instruktionen.'}</p>
           </div>
         ))}
       </div>
-
-      {agents.length === 0 && (
-        <div className="mt-10 p-10 border-2 border-dashed border-slate-100 rounded-2xl text-center text-slate-400">
-          Keine Agenten gefunden.
-        </div>
-      )}
     </div>
   );
 }
