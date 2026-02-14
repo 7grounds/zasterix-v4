@@ -1,4 +1,8 @@
-import ManagerChat from '@/components/ManagerChat';
+ /**
+ * @MODULE_ID app.page
+ * @DESCRIPTION Root entry point for Origo-V4
+ */
+import ManagerChat from '../components/ManagerChat';
 
 export default function Home() {
   return (
