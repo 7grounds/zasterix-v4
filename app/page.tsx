@@ -2,23 +2,27 @@
 import React, { useState } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import AgentList from '../components/AgentList';
-import ProjectHistory from '../components/ProjectHistory';
+import ManagerChat from '../components/ManagerChat';
 
 export default function App() {
-  const [activePage, setActivePage] = useState('agents');
+  // Wir starten jetzt standardmäßig im Manager-Chat
+  const [activePage, setActivePage] = useState('manager');
 
   return (
     <DashboardLayout activePage={activePage} setActivePage={setActivePage}>
-      <div className="animate-in fade-in duration-500">
+      <div className="h-full w-full">
+        {activePage === 'manager' && <ManagerChat />}
         {activePage === 'agents' && <AgentList />}
-        {activePage === 'history' && <ProjectHistory />}
         {activePage === 'dashboard' && (
-          <div className="p-10 text-slate-800">
-            <h1 className="text-3xl font-bold italic uppercase tracking-tighter">Origo Command Center</h1>
-            <p className="mt-4 text-slate-500">System aktiv. Wähle ein Modul aus der Sidebar.</p>
+          <div className="p-20 flex items-center justify-center h-full bg-slate-50">
+             <div className="text-center">
+                <h1 className="text-7xl font-black italic tracking-tighter uppercase text-slate-200">System</h1>
+                <p className="text-slate-400 mt-4 text-xl font-mono uppercase tracking-[0.3em]">Kern-Integrität: 100%</p>
+             </div>
           </div>
         )}
       </div>
     </DashboardLayout>
   );
 }
+
