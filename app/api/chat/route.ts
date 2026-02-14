@@ -1,9 +1,8 @@
 /**
  * @MODULE_ID app.api.chat
- * @VERSION Origo-V4-Build-Fix
+ * @VERSION Origo-V4-Production
  */
 import { NextResponse } from "next/server";
-// Removed CoreMessage from imports to avoid version conflicts
 import { generateText, streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGroq } from "@ai-sdk/groq";
@@ -48,21 +47,20 @@ export async function POST(req: Request) {
       ? await supabaseAdmin.from("agent_templates").select("*").eq("id", agentId).single()
       : { data: null };
     
-    const config = dbAgent?.ai_model_config || overrideConfig || {};
+    const agent = dbAgent as any;
+    const config = agent?.ai_model_config || overrideConfig || {};
     const provider = config.provider || "groq";
     const modelName = config.model || "llama-3.3-70b-versatile";
     
     const factory = resolveModelFactory(provider);
     if (!factory) throw new Error(`Provider ${provider} not configured`);
-    
     const aiModel = factory(modelName);
 
     const fullSystemPrompt = [
-      overridePrompt || dbAgent?.system_prompt || "You are an Origo Agent.",
-      dbAgent?.validation_library?.length > 0 ? `VALIDATION_LIBRARY: ${JSON.stringify(dbAgent.validation_library)}` : ""
+      overridePrompt || agent?.system_prompt || "You are an Origo Agent.",
+      agent?.validation_library?.length > 0 ? `VALIDATION_LIBRARY: ${JSON.stringify(agent.validation_library)}` : ""
     ].filter(Boolean).join("\n\n");
 
-    // Removed the : CoreMessage[] type annotation to allow auto-inference
     const requestMessages = [
       { role: "system" as const, content: fullSystemPrompt },
       ...history,
@@ -75,7 +73,6 @@ export async function POST(req: Request) {
         messages: requestMessages,
         temperature: config.temperature ?? 0.7,
       });
-
       return result.toTextStreamResponse();
     }
 
@@ -89,7 +86,6 @@ export async function POST(req: Request) {
 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal Server Error";
-    console.error("Origo API Error:", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
