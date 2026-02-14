@@ -1,7 +1,4 @@
-/**
- * @MODULE_ID app.api.chat
- * @VERSION Origo-V4-xAI-Linter-Fix
- */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { generateText, streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -29,9 +26,7 @@ export async function POST(req: Request) {
       ? await supabaseAdmin.from("agent_templates").select("*").eq("id", agentId).single()
       : { data: null };
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const agent = dbAgent as any;
-    
     const modelName = agent?.ai_model_config?.model || "grok-2-1212";
 
     const requestMessages = [
@@ -43,7 +38,6 @@ export async function POST(req: Request) {
     if (stream) {
       const result = await streamText({
         model: xai(modelName),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         messages: requestMessages as any,
         temperature: 0.7,
       });
@@ -52,7 +46,6 @@ export async function POST(req: Request) {
 
     const { text } = await generateText({
       model: xai(modelName),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       messages: requestMessages as any,
       temperature: 0.7,
     });
