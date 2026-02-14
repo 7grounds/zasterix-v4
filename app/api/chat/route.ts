@@ -1,5 +1,9 @@
+/**
+ * @MODULE_ID app.api.chat
+ * @VERSION Origo-V4-Final
+ */
 import { NextResponse } from "next/server";
-import { generateText, streamText } from "ai";
+import { generateText, streamText, CoreMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGroq } from "@ai-sdk/groq";
 import { createClient } from "@supabase/supabase-js";
@@ -28,7 +32,14 @@ const sanitizeMarkers = (text: string) => {
 
 export async function POST(req: Request) {
   try {
-    const { message, agentId, history = [], systemPrompt: overridePrompt, aiModelConfig: overrideConfig, stream = false } = await req.json();
+    const { 
+      message, 
+      agentId, 
+      history = [], 
+      systemPrompt: overridePrompt, 
+      aiModelConfig: overrideConfig, 
+      stream = false 
+    } = await req.json();
 
     if (!message) return NextResponse.json({ error: "Empty message" }, { status: 400 });
 
@@ -42,6 +53,7 @@ export async function POST(req: Request) {
     
     const factory = resolveModelFactory(provider);
     if (!factory) throw new Error(`Provider ${provider} not configured`);
+    
     const aiModel = factory(modelName);
 
     const fullSystemPrompt = [
@@ -49,23 +61,34 @@ export async function POST(req: Request) {
       dbAgent?.validation_library?.length > 0 ? `VALIDATION_LIBRARY: ${JSON.stringify(dbAgent.validation_library)}` : ""
     ].filter(Boolean).join("\n\n");
 
-    const requestMessages = [
-      { role: "system" as const, content: fullSystemPrompt },
+    const requestMessages: CoreMessage[] = [
+      { role: "system", content: fullSystemPrompt },
       ...history,
-      { role: "user" as const, content: message },
+      { role: "user", content: message },
     ];
 
     if (stream) {
-      const result = await streamText({ model: aiModel, messages: requestMessages, temperature: config.temperature ?? 0.7 });
-      return result.toDataStreamResponse();
+      const result = await streamText({
+        model: aiModel,
+        messages: requestMessages,
+        temperature: config.temperature ?? 0.7,
+      });
+
+      // Fixed: uses toTextStreamResponse for compatibility with your SDK version
+      return result.toTextStreamResponse();
     }
 
-    const { text } = await generateText({ model: aiModel, messages: requestMessages, temperature: config.temperature ?? 0.7 });
+    const { text } = await generateText({
+      model: aiModel,
+      messages: requestMessages,
+      temperature: config.temperature ?? 0.7,
+    });
+
     return NextResponse.json({ text: sanitizeMarkers(text) });
 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal Server Error";
+    console.error("Origo API Error:", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
-
