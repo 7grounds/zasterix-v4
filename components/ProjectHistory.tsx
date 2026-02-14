@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from './lib/supabase';
+// WICHTIG: ../ bedeutet "gehe einen Ordner zurück", um den lib-Ordner zu finden
+import { supabase } from '../lib/supabase'; 
 
 interface HistoryEntry {
   event_id: string;
@@ -16,6 +17,8 @@ export default function ProjectHistory() {
   useEffect(() => {
     async function fetchHistory() {
       try {
+        setLoading(true);
+        // Wir rufen die RPC-Funktion auf
         const { data, error } = await supabase.rpc('get_project_history');
         if (error) throw error;
         setHistory(data || []);
@@ -28,55 +31,42 @@ export default function ProjectHistory() {
     fetchHistory();
   }, []);
 
-  if (loading) return <div className="p-10 text-center animate-pulse">Synchronisiere Chronik...</div>;
+  if (loading) return <div className="p-10 text-center animate-pulse font-mono text-blue-500">ACCESSING CHRONICLER...</div>;
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <header className="mb-10 flex justify-between items-end border-b pb-6">
-        <div>
-          <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase">
-            Project <span className="text-blue-600">Archive</span>
-          </h1>
-          <p className="text-gray-500 font-mono text-xs mt-1">Status: Chronicler Link Active</p>
-        </div>
-        <div className="text-right">
-          <span className="text-[10px] font-bold bg-green-100 text-green-700 px-3 py-1 rounded-full">
-            Records: {history.length}
-          </span>
-        </div>
+    <div className="p-8 max-w-5xl mx-auto bg-gray-50 min-h-screen">
+      <header className="mb-12 border-b-2 border-blue-600 pb-6">
+        <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase">
+          Project <span className="text-blue-600">Archive</span>
+        </h1>
+        <p className="text-gray-400 font-mono text-[10px] mt-1 italic">Origo Long-Term Memory Interface</p>
       </header>
 
-      <div className="relative border-l-2 border-gray-100 ml-4 space-y-8">
-        {history.map((entry) => (
-          <div key={entry.event_id} className="relative pl-8">
-            {/* Timeline Dot */}
-            <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-sm"></div>
-            
-            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded">
-                  {entry.category || 'General'}
-                </span>
-                <time className="text-[10px] text-gray-400 font-mono">
-                  {new Date(entry.created_at).toLocaleString()}
-                </time>
+      <div className="relative border-l-4 border-blue-100 ml-4 space-y-10">
+        {history.length === 0 ? (
+          <div className="pl-10 py-10 text-gray-400 italic">Die Chronik ist noch leer.</div>
+        ) : (
+          history.map((entry) => (
+            <div key={entry.event_id} className="relative pl-10">
+              <div className="absolute -left-[14px] top-2 h-6 w-6 rounded-full border-4 border-white bg-blue-600 shadow-md"></div>
+              <div className="bg-white border border-gray-200 rounded-3xl p-8 shadow-sm">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-[10px] font-black text-white uppercase bg-blue-600 px-3 py-1 rounded-md">
+                    {entry.category || 'LOG'}
+                  </span>
+                  <time className="text-[10px] text-gray-400 font-mono">
+                    {new Date(entry.created_at).toLocaleString('de-DE')}
+                  </time>
+                </div>
+                <h3 className="text-xs font-bold text-gray-400 uppercase mb-4">
+                  Scope: {entry.project_name || 'Global System'}
+                </h3>
+                <p className="text-gray-700 text-sm leading-relaxed">
+                  {entry.content}
+                </p>
               </div>
-              
-              <h3 className="text-sm font-bold text-gray-700 mb-2">
-                Projekt: {entry.project_name || 'System-Wide'}
-              </h3>
-              
-              <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
-                {entry.content}
-              </p>
             </div>
-          </div>
-        ))}
-        
-        {history.length === 0 && (
-          <div className="pl-8 text-gray-400 italic text-sm">
-            Die Chronik ist noch leer. Der Chronicler wartet auf den nächsten Sprint-Abschluss.
-          </div>
+          ))
         )}
       </div>
     </div>
