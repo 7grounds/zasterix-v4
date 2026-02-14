@@ -1,43 +1,49 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from "next/server";
+'use client';
+import { useState } from 'react';
 
-export async function POST(req: Request) {
-  try {
-    const { message } = await req.json();
-    const key = process.env.XAI_API_KEY;
+export default function DiagnosticPage() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
-    if (!key) return NextResponse.json({ error: "XAI_API_KEY_MISSING" }, { status: 500 });
-
-    // Using the official x.ai endpoint
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${key.trim()}`,
-      },
-      body: JSON.stringify({
-        model: "grok-2-1212", 
-        messages: [{ role: "user", content: message || "Ping" }],
-        temperature: 0
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json({ 
-        error: "XAI_REJECTED", 
-        status: response.status,
-        details: data 
-      }, { status: response.status });
+  const runTest = async () => {
+    setLoading(true);
+    try {
+      // Direct call to the new simplified API below
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: "System check: Confirm Grok 4 status." }),
+      });
+      const json = await res.json();
+      setData(json);
+    } catch (e) {
+      setData({ error: "Local Network failure" });
+    } finally {
+      setLoading(false);
     }
+  };
 
-    return NextResponse.json({ 
-      success: true, 
-      text: data.choices[0].message.content 
-    });
+  return (
+    <div className="min-h-screen bg-black text-cyan-400 p-20 font-mono">
+      <h1 className="text-xl font-bold mb-6 border-b border-cyan-900 pb-2 tracking-[0.2em] uppercase">
+        ORIGO_XAI_HANDSHAKE_v4
+      </h1>
+      
+      <button 
+        onClick={runTest}
+        className="bg-cyan-600 text-black px-10 py-5 font-bold hover:bg-white transition-all rounded mb-10 uppercase text-xs"
+      >
+        {loading ? ">>> PROBING_CORE..." : ">>> EXECUTE_PING"}
+      </button>
 
-  } catch (error: any) {
-    return NextResponse.json({ error: "SERVER_CRASH", msg: error.message }, { status: 500 });
-  }
+      <div className="bg-zinc-950 border border-cyan-900 p-10 rounded shadow-2xl">
+        <p className="text-[10px] text-cyan-800 mb-4 tracking-[0.3em] uppercase font-black">
+          // API_RESPONSE_LOG:
+        </p>
+        <pre className="text-sm whitespace-pre-wrap leading-relaxed">
+          {data ? JSON.stringify(data, null, 2) : "System Idle. Awaiting User Input."}
+        </pre>
+      </div>
+    </div>
+  );
 }
