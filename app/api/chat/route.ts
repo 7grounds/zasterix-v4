@@ -16,7 +16,9 @@ export async function POST(req: Request) {
       .eq("name", targetTitle)
       .single();
 
-    if (dbError || !agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    if (dbError || !agent) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
 
     const blueprint = agent.metadata?.blueprint;
     const blueprintContext = blueprint 
@@ -36,7 +38,10 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: agent.model_name,
         messages: [
-          { role: "system", content: `${agent.system_prompt}${blueprintContext}\nEnglish only.` },
+          { 
+            role: "system", 
+            content: `${agent.system_prompt}${blueprintContext}\nAlways respond in English. Format: [${agent.name}]: Text.` 
+          },
           ...history.slice(-6),
           { role: "user", content: message }
         ],
@@ -45,12 +50,17 @@ export async function POST(req: Request) {
     });
 
     const data = await response.json();
+    
+    if (!data.choices || !data.choices[0]) {
+      throw new Error("Invalid AI response");
+    }
+
     return NextResponse.json({ 
       text: data.choices[0].message.content,
       title: agent.name
     });
 
-  } catch (_err) {
+  } catch {
     return NextResponse.json({ error: "Origo Brain Error" }, { status: 500 });
   }
 }
