@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   try {
     const { message, history = [], targetTitle = "Discussion Leader" } = await req.json();
 
-    // 1. Fetch Agent including Metadata (Blueprint storage)
+    // 1. Fetch Agent and its Blueprint (Stored in Metadata)
     const { data: agent, error: dbError } = await supabase
       .from("agent_templates")
       .select("system_prompt, provider, model_name, name, metadata")
@@ -20,18 +20,17 @@ export async function POST(req: Request) {
 
     if (dbError || !agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
-    // 2. Blueprint Fallback Logic
-    // If blueprint exists in metadata, we prioritize it as 'Experience'
+    // 2. Blueprint Fallback Logic: Priorities learned keywords over generic prompt
     const blueprint = agent.metadata?.blueprint;
     const blueprintContext = blueprint 
-      ? `\n[BLUEPRINT ENABLED]: Use the following learned keywords and project history to guide your response: ${JSON.stringify(blueprint.keywords)}.` 
-      : "\n[TEMPLATE MODE]: No specific project blueprint found. Use your base instructions.";
+      ? `\n[BLUEPRINT ACTIVE]: Focus on these specific project keywords: ${JSON.stringify(blueprint.keywords)}. Use these to define your technical approach.` 
+      : "\n[TEMPLATE MODE]: Proceed with base instructions.";
 
     const isGroq = agent.provider?.toLowerCase() === 'groq';
     const apiKey = isGroq ? process.env.GROQ_API_KEY : process.env.XAI_API_KEY;
     const apiUrl = isGroq ? "https://api.groq.com/openai/v1/chat/completions" : "https://api.x.ai/v1/chat/completions";
 
-    // 3. Execution with Combined Brain (Template + Blueprint)
+    // 3. Execution
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
@@ -43,12 +42,12 @@ export async function POST(req: Request) {
         messages: [
           { 
             role: "system", 
-            content: `${agent.system_prompt}${blueprintContext}\nALWAYS respond in English. Format: [${agent.name}]: Text.` 
+            content: `${agent.system_prompt}${blueprintContext}\nRespond in English. Format: [${agent.name}]: Text.` 
           },
-          ...history.slice(-5),
+          ...history.slice(-6), // Send more history for better context
           { role: "user", content: message }
         ],
-        temperature: 0.4, // Lower temperature for higher precision (Serious Mode)
+        temperature: 0.3, // Serious, data-centric temperature
       }),
     });
 
@@ -59,6 +58,6 @@ export async function POST(req: Request) {
     });
 
   } catch (err) {
-    return NextResponse.json({ error: "Origo Execution Error" }, { status: 500 });
+    return NextResponse.json({ error: "Origo Brain Error" }, { status: 500 });
   }
 }
