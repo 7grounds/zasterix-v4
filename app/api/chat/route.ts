@@ -1,13 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * @MODULE_ID app.api.chat
- * @VERSION Origo-V4-Clean-Build
- * @DESCRIPTION Minimalistische Route für L1/L2 Hierarchie. Build-safe für Vercel.
- */
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Supabase Admin Client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -17,72 +11,54 @@ export async function POST(req: Request) {
   try {
     const { message, history = [], targetTitle = "Discussion Leader" } = await req.json();
 
-    // 1. DYNAMISCHE IDENTITÄT: Holt L1 oder L2 Konfiguration aus Supabase
+    // 1. Fetch Agent including Metadata (Blueprint storage)
     const { data: agent, error: dbError } = await supabase
       .from("agent_templates")
-      .select("system_prompt, provider, model_name, name")
+      .select("system_prompt, provider, model_name, name, metadata")
       .eq("name", targetTitle)
       .single();
 
-    if (dbError || !agent) {
-      return NextResponse.json({ error: "Agent Title not found" }, { status: 404 });
-    }
+    if (dbError || !agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
-    // 2. PROVIDER GATEWAY: Groq (LPU Speed) oder xAI (Reasoning)
-    const provider = agent.provider?.toLowerCase() || 'xai';
-    const isGroq = provider === 'groq';
-    
-    const config = {
-      url: isGroq 
-        ? "https://api.groq.com/openai/v1/chat/completions" 
-        : "https://api.x.ai/v1/chat/completions",
-      key: isGroq ? process.env.GROQ_API_KEY : process.env.XAI_API_KEY,
-      model: agent.model_name
-    };
+    // 2. Blueprint Fallback Logic
+    // If blueprint exists in metadata, we prioritize it as 'Experience'
+    const blueprint = agent.metadata?.blueprint;
+    const blueprintContext = blueprint 
+      ? `\n[BLUEPRINT ENABLED]: Use the following learned keywords and project history to guide your response: ${JSON.stringify(blueprint.keywords)}.` 
+      : "\n[TEMPLATE MODE]: No specific project blueprint found. Use your base instructions.";
 
-    if (!config.key) {
-      return NextResponse.json({ error: `API Key missing for ${provider}` }, { status: 500 });
-    }
+    const isGroq = agent.provider?.toLowerCase() === 'groq';
+    const apiKey = isGroq ? process.env.GROQ_API_KEY : process.env.XAI_API_KEY;
+    const apiUrl = isGroq ? "https://api.groq.com/openai/v1/chat/completions" : "https://api.x.ai/v1/chat/completions";
 
-    // 3. MINIMALISTISCHER REQUEST: Fokus auf Kürze und Identität
-    const response = await fetch(config.url, {
+    // 3. Execution with Combined Brain (Template + Blueprint)
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${config.key.trim()}`,
+        "Authorization": `Bearer ${apiKey?.trim()}`,
       },
       body: JSON.stringify({
-        model: config.model,
+        model: agent.model_name,
         messages: [
           { 
             role: "system", 
-            content: `${agent.system_prompt} Antworte IMMER im Format [${agent.name}]: Text. Max 2 Sätze.` 
+            content: `${agent.system_prompt}${blueprintContext}\nALWAYS respond in English. Format: [${agent.name}]: Text.` 
           },
-          ...history.slice(-3), // Historie-Kürzung gegen Bloat
+          ...history.slice(-5),
           { role: "user", content: message }
         ],
-        temperature: 0.6,
-        max_tokens: 120 // Harte Grenze für kompakten Style
+        temperature: 0.4, // Lower temperature for higher precision (Serious Mode)
       }),
     });
 
     const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json({ error: "Provider Error", details: data }, { status: 400 });
-    }
-
-    // 4. RESPONSE: Rückgabe an Origo UI
     return NextResponse.json({ 
       text: data.choices[0].message.content,
-      metadata: {
-        title: agent.name,
-        provider: provider
-      }
+      title: agent.name
     });
 
-  } catch {
-    // ESLint-safe: Keine ungenutzten Variablen mehr
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  } catch (err) {
+    return NextResponse.json({ error: "Origo Execution Error" }, { status: 500 });
   }
 }
