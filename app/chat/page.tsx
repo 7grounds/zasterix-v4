@@ -41,20 +41,18 @@ export default function OrigoChat() {
     setLoading(true);
 
     try {
-      // 1. Initial Call to Manager Alpha
       const data = await callApi(input, "Manager Alpha", updatedMessages);
       const leaderMsg: Message = { role: "assistant", text: data.text, title: data.title };
       let currentContext = [...updatedMessages, leaderMsg];
       setMessages(currentContext);
 
-      // 2. Round Table Chain: Check for specialists
       const specialists = ["Designer", "DevOps"];
       let lastAgentOutput = data.text;
 
       for (const agentName of specialists) {
         if (new RegExp(agentName, "i").test(lastAgentOutput)) {
           const specData = await callApi(
-            `Continue the session based on: ${lastAgentOutput}`,
+            `Continue session: ${lastAgentOutput}`,
             agentName,
             currentContext
           );
@@ -64,7 +62,7 @@ export default function OrigoChat() {
           lastAgentOutput = specData.text;
         }
       }
-    } catch (_err) {
+    } catch {
       setMessages(prev => [...prev, { role: "system", text: "Connection Lost.", title: "SYSTEM" }]);
     } finally {
       setLoading(false);
@@ -72,7 +70,7 @@ export default function OrigoChat() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#020617] text-slate-300 font-mono">
+    <div className="flex flex-col h-screen bg-[#020617] text-slate-300 font-mono text-sm">
       <header className="p-4 border-b border-slate-800 bg-black flex justify-between items-center">
         <span className="text-xs font-bold tracking-[0.3em] text-sky-500 uppercase">Origo V4 // Round Table</span>
       </header>
@@ -87,17 +85,17 @@ export default function OrigoChat() {
             }`}>
               {msg.title}
             </div>
-            <div className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</div>
+            <div className="whitespace-pre-wrap">{msg.text}</div>
           </div>
         ))}
-        {loading && <div className="text-[10px] animate-pulse text-sky-500 ml-8 italic">SYNCING_CLUSTER...</div>}
+        {loading && <div className="text-[10px] animate-pulse text-sky-500 ml-8 italic uppercase">Syncing_Cluster...</div>}
         <div ref={scrollRef} />
       </div>
 
       <footer className="p-6 bg-black border-t border-slate-900">
         <form onSubmit={sendMessage} className="flex gap-4 max-w-4xl mx-auto">
           <input 
-            className="flex-1 bg-transparent border-b border-slate-700 focus:border-sky-500 outline-none text-sm py-2 transition-all"
+            className="flex-1 bg-transparent border-b border-slate-700 focus:border-sky-500 outline-none py-2 transition-all"
             value={input} 
             onChange={(e) => setInput(e.target.value)} 
             placeholder="Command Alpha..."
@@ -110,3 +108,5 @@ export default function OrigoChat() {
     </div>
   );
 }
+
+      
