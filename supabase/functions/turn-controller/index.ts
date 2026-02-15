@@ -55,22 +55,46 @@ serve(async (req) => {
     // Initialize Supabase client with service role (bypass RLS)
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Get next speaker using SQL function
-    const { data: nextSpeaker, error: speakerError } = await supabase
-      .rpc("get_next_speaker", {
-        p_project_id: payload.record.project_id,
-      })
-      .single();
+    // Check for keyword-triggered agent participation first
+    const { data: keywordMatch, error: keywordError } = await supabase
+      .rpc('check_agent_keyword_match', {
+        p_message_content: payload.record.content,
+        p_project_id: payload.record.project_id
+      });
 
-    if (speakerError || !nextSpeaker) {
-      console.error("Error getting next speaker:", speakerError);
-      return new Response(
-        JSON.stringify({ error: "Failed to get next speaker" }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+    let speaker: NextSpeaker;
+    let triggeredByKeyword = false;
+
+    if (keywordMatch && keywordMatch.length > 0) {
+      // Keyword triggered - use matched agent
+      const match = keywordMatch[0];
+      speaker = {
+        agent_id: match.agent_id,
+        agent_name: match.speaker_name,
+        sequence_order: -1, // Special indicator for keyword trigger
+        system_prompt: match.system_prompt,
+        is_user: false
+      };
+      triggeredByKeyword = true;
+      console.log(`Keyword trigger: ${speaker.agent_name} (keyword: ${match.trigger_keyword})`);
+    } else {
+      // Normal flow - get next speaker from sequence
+      const { data: nextSpeaker, error: speakerError } = await supabase
+        .rpc("get_next_speaker", {
+          p_project_id: payload.record.project_id,
+        })
+        .single();
+
+      if (speakerError || !nextSpeaker) {
+        console.error("Error getting next speaker:", speakerError);
+        return new Response(
+          JSON.stringify({ error: "Failed to get next speaker" }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      speaker = nextSpeaker as NextSpeaker;
     }
-
-    const speaker = nextSpeaker as NextSpeaker;
 
     // If next speaker is user, stop (wait for user input)
     if (speaker.is_user) {
@@ -104,6 +128,15 @@ serve(async (req) => {
       .map((msg) => `${msg.speaker_name}: ${msg.content}`)
       .join("\n\n") || "";
 
+    // Build system prompt with context injection for keyword-triggered agents
+    let systemPrompt = speaker.system_prompt;
+    if (triggeredByKeyword) {
+      systemPrompt = `You have been called upon regarding your function. Read the previous messages from the database and provide your expert input.
+
+${speaker.system_prompt}`;
+      console.log("Context injected for keyword-triggered agent");
+    }
+
     // Call AI API (try Claude first, fallback to Groq)
     let aiResponse = "";
     let providerUsed = "";
@@ -124,7 +157,7 @@ serve(async (req) => {
             messages: [
               {
                 role: "user",
-                content: `${speaker.system_prompt}\n\nPrevious conversation:\n${contextMessages}\n\nRespond as ${speaker.agent_name}. Keep your response to 3 lines or less.`,
+                content: `${systemPrompt}\n\nPrevious conversation:\n${contextMessages}\n\nRespond as ${speaker.agent_name}. Keep your response to 3 lines or less.`,
               },
             ],
           }),
@@ -155,7 +188,7 @@ serve(async (req) => {
             messages: [
               {
                 role: "system",
-                content: speaker.system_prompt,
+                content: systemPrompt,
               },
               {
                 role: "user",
