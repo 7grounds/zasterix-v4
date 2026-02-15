@@ -205,12 +205,36 @@ Bist du einverstanden? (Antworte mit 'ja' oder 'bestätigt' zum Starten)`;
         []
       );
 
+      // Parse the leader's response to extract agents
+      const agentMatches = leaderResponse.match(/Agenten:\s*([^\n]+)/i);
+      let suggestedAgents = ["Manager L3", "Hotel Expert L2", "Guide Expert L2"];
+      
+      if (agentMatches && agentMatches[1]) {
+        const agentsList = agentMatches[1].split(',').map(a => a.trim());
+        if (agentsList.length > 0) {
+          suggestedAgents = agentsList;
+        }
+      }
+
+      // Extract topic
+      const topicMatch = leaderResponse.match(/Thema:\s*([^\n]+)/i);
+      const extractedTopic = topicMatch && topicMatch[1] ? topicMatch[1].trim() : message.substring(0, 100);
+
+      // Create discussionConfig to send back
+      const proposedConfig: DiscussionConfig = {
+        agents: suggestedAgents,
+        linesPerAgent: 3,
+        rounds: 3,
+        topic: extractedTopic
+      };
+
       return NextResponse.json({
         phase: "confirmation",
         managerResponse,
         leaderResponse,
         speaker: "Discussion Leader",
-        needsConfirmation: true
+        needsConfirmation: true,
+        discussionConfig: proposedConfig
       });
     }
 

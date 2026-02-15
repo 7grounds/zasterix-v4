@@ -19,10 +19,17 @@ type Message = {
 };
 
 type DiscussionState = {
-  phase: "normal" | "confirmation" | "discussion" | "summary" | "complete";
+  phase: "normal" | "initiation" | "confirmation" | "discussion" | "summary" | "complete";
   projectId?: string;
   currentRound?: number;
+  currentAgentIndex?: number;
   needsConfirmation?: boolean;
+  discussionConfig?: {
+    agents: string[];
+    linesPerAgent: number;
+    rounds: number;
+    topic: string;
+  };
 };
 
 type AgentTemplate = {
@@ -65,7 +72,7 @@ export default function MainDashboardPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [discussionState, setDiscussionState] = useState<DiscussionState>({
-    phase: "normal",
+    phase: "initiation",
   });
   const [userId, setUserId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
@@ -189,6 +196,16 @@ export default function MainDashboardPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    
+    // Check if this is a confirmation message
+    const isConfirmation = /^(ja|yes|bestätigt|confirmed|ok)$/i.test(input.trim());
+    let phaseToSend = discussionState.phase;
+    
+    if (isConfirmation && discussionState.phase === "confirmation" && discussionState.needsConfirmation) {
+      // User is confirming, so we should move to discussion start
+      phaseToSend = "confirmation"; // API expects "confirmation" to start discussion
+    }
+    
     setInput("");
     setLoading(true);
 
@@ -200,7 +217,11 @@ export default function MainDashboardPage() {
           message: userMessage.content,
           userId: userId || "anonymous",
           organizationId: organizationId,
-          discussionState,
+          phase: phaseToSend,
+          discussionConfig: discussionState.discussionConfig,
+          currentRound: discussionState.currentRound,
+          currentAgentIndex: discussionState.currentAgentIndex,
+          projectId: discussionState.projectId,
         }),
       });
 
@@ -218,18 +239,75 @@ export default function MainDashboardPage() {
           },
         ]);
       } else {
+        // Add assistant message
         const assistantMessage: Message = {
           id: createId(),
           role: "assistant",
-          content: data.response || "No response received.",
+          content: data.response || data.leaderResponse || data.managerResponse || "No response received.",
           speaker: data.speaker || "Manager Alpha",
           timestamp: new Date().toISOString(),
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
 
-        if (data.discussionState) {
-          setDiscussionState(data.discussionState);
+        // Update discussion state from API response
+        const newState: DiscussionState = {
+          phase: data.phase || discussionState.phase,
+          projectId: data.projectId || discussionState.projectId,
+          currentRound: data.currentRound ?? discussionState.currentRound,
+          currentAgentIndex: data.currentAgentIndex ?? discussionState.currentAgentIndex,
+          needsConfirmation: data.needsConfirmation ?? discussionState.needsConfirmation,
+          discussionConfig: data.discussionConfig || discussionState.discussionConfig,
+        };
+
+        setDiscussionState(newState);
+
+        // If we're in discussion phase and there's a next speaker, automatically trigger next agent
+        if (data.phase === "discussion" && data.nextSpeaker && data.nextSpeaker !== "user") {
+          // Auto-trigger next agent after a short delay
+          setTimeout(async () => {
+            try {
+              const nextResponse = await fetch("/api/manager-discussion", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  message: "(continue discussion)",
+                  userId: userId || "anonymous",
+                  organizationId: organizationId,
+                  phase: data.phase,
+                  discussionConfig: data.discussionConfig,
+                  currentRound: data.currentRound,
+                  currentAgentIndex: data.currentAgentIndex,
+                  projectId: data.projectId,
+                }),
+              });
+
+              const nextData = await nextResponse.json();
+
+              if (!nextData.error && nextData.response) {
+                const nextMessage: Message = {
+                  id: createId(),
+                  role: "assistant",
+                  content: nextData.response,
+                  speaker: nextData.speaker || "Agent",
+                  timestamp: new Date().toISOString(),
+                };
+
+                setMessages((prev) => [...prev, nextMessage]);
+
+                // Update state again
+                setDiscussionState({
+                  phase: nextData.phase || data.phase,
+                  projectId: nextData.projectId || data.projectId,
+                  currentRound: nextData.currentRound ?? data.currentRound,
+                  currentAgentIndex: nextData.currentAgentIndex ?? data.currentAgentIndex,
+                  discussionConfig: nextData.discussionConfig || data.discussionConfig,
+                });
+              }
+            } catch (error) {
+              console.error("Failed to auto-trigger next agent:", error);
+            }
+          }, 1000);
         }
       }
     } catch {
