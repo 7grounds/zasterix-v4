@@ -295,6 +295,12 @@ const DashboardPage = () => {
       external: false,
     },
     {
+      id: "meetings",
+      label: "View Meetings",
+      href: "/meetings",
+      external: false,
+    },
+    {
       id: "asset-check",
       label: "Asset-Check",
       href: "/stage-1/asset-coach",
