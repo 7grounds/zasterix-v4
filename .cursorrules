@@ -21,18 +21,26 @@ Constraints:
 - Check every DB update logs to universal_history
 - Verify Origo Architecture compliance
 
+## AI PROVIDER CONFIGURATION
+Primary: Claude (Anthropic) - claude-3-5-sonnet-20241022
+Backups: Groq → OpenAI → Google
+Use Claude for complex reasoning and code architecture.
+Failover to Groq for fast, simple responses.
+
 ## EXECUTION RULES
 1. Respond in English (all code, comments, DB entries)
 2. Max 3 lines per explanation (Manager Alpha Rule)
 3. Use provided Supabase schema for all DB operations
 4. Every mutation must log to universal_history
 5. Direct queries over abstractions (no service layers)
+6. Use Claude for complex tasks, Groq for speed
 
 ## CONTEXT
 - Organization: 17b2f0fe-f89d-47b1-9fd4-aafe1a327388
 - Framework: Next.js (App Router), Supabase, Tailwind CSS
 - Tables: agent_templates, agent_blueprints, projects, discussion_logs, universal_history
 - Prefer JSONB payloads over new tables
+- AI Providers: Claude (primary), Groq, OpenAI, Google
 
 Architecture Pattern: Feature-Driven Modular Engine
 - /src/core: Global state (Zustand), Supabase client, Auth

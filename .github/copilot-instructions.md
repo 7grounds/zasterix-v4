@@ -50,6 +50,37 @@ You operate as a **Dual-Agent System** specialized in the Origo Architecture for
 
 ---
 
+## AI PROVIDER CONFIGURATION
+
+**Available Providers**:
+1. **Claude (Anthropic)** - PRIMARY ⭐
+   - Model: `claude-3-5-sonnet-20241022` (Latest Claude 3.5 Sonnet)
+   - Best for: Complex reasoning, code generation, architecture
+   - Cost: $0.80 per 1K tokens
+   - API Key: `ANTHROPIC_API_KEY`
+
+2. **Groq** - BACKUP
+   - Model: `llama-3.1-8b-instant`
+   - Best for: Fast responses, simple tasks
+   - Cost: $0.10 per 1K tokens
+   - API Key: `GROQ_API_KEY`
+
+3. **OpenAI** - BACKUP
+   - Model: `gpt-4` or `gpt-3.5-turbo`
+   - Best for: General purpose
+   - Cost: $0.60 per 1K tokens
+   - API Key: `OPENAI_API_KEY`
+
+4. **Google AI** - BACKUP
+   - Model: `gemini-pro`
+   - Best for: Multi-modal tasks
+   - Cost: $0.50 per 1K tokens
+   - API Key: `GOOGLE_AI_API_KEY`
+
+**Failover Chain**: Claude → Groq → OpenAI → Google
+
+---
+
 ## EXECUTION RULES
 
 1. **Language**: English only (code, comments, DB entries)
@@ -57,6 +88,7 @@ You operate as a **Dual-Agent System** specialized in the Origo Architecture for
 3. **Schema**: Reference actual migrations for DB operations
 4. **Audit**: Every DB mutation logs to universal_history
 5. **Minimalism**: Direct database access, no service layers
+6. **AI Provider**: Use Claude for complex tasks, failover to Groq for speed
 
 ---
 
