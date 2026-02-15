@@ -14,11 +14,19 @@ interface Message {
   title: string;
 }
 
+interface DiscussionLog {
+  created_at: string;
+  speaker_name: string;
+  content: string;
+}
+
 export default function OrigoChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [logs, setLogs] = useState<any[]>([]);
+  
+  // FIX: Strikte Typisierung ohne 'any'
+  const [logs, setLogs] = useState<DiscussionLog[]>([]);
   
   const projectId = "98d9b300-c908-411c-8114-0917b49372da"; 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -34,7 +42,10 @@ export default function OrigoChat() {
       .select('created_at, speaker_name, content')
       .eq('project_id', projectId)
       .order('created_at', { ascending: true });
-    if (data) setLogs(data);
+    
+    if (data) {
+      setLogs(data as DiscussionLog[]);
+    }
   };
 
   const callApi = async (msg: string, title: string, currentHistory: Message[]) => {
@@ -80,7 +91,6 @@ export default function OrigoChat() {
         }
       }
 
-      // Finaler Call für Zusammenfassung
       if (chainContext.length > updatedHistory.length + 1) {
         const sumData = await callApi("Summarize the final decisions.", "Manager Alpha", chainContext);
         setMessages(prev => [...prev, { role: "assistant", text: sumData.text, title: "SUMMARY" }]);
@@ -94,36 +104,35 @@ export default function OrigoChat() {
 
   return (
     <div className="flex flex-col h-screen bg-black text-slate-300 font-mono text-xs">
-      <header className="p-4 border-b border-slate-900 bg-black flex justify-between">
-        <span className="text-sky-500 font-bold uppercase tracking-widest">Origo V4 // Linked: {projectId.slice(0,8)}</span>
+      <header className="p-4 border-b border-slate-900 bg-black">
+        <span className="text-sky-500 font-bold uppercase tracking-widest">Origo V4 // Stable Build</span>
       </header>
       
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {messages.map((msg, i) => (
           <div key={i} className={`border-l pl-4 ${msg.title === 'OWNER' ? 'border-slate-800' : 'border-sky-900'}`}>
-            <div className="text-[10px] text-sky-600 mb-1">{msg.title}</div>
-            <div className="leading-relaxed">{msg.text}</div>
+            <div className="text-[10px] text-sky-600 mb-1 font-black">{msg.title}</div>
+            <div className="leading-relaxed whitespace-pre-wrap">{msg.text}</div>
           </div>
         ))}
-        {loading && <div className="animate-pulse text-sky-500">SYNCING CLUSTER...</div>}
+        {loading && <div className="animate-pulse text-sky-500 uppercase">Syncing...</div>}
         
-        {/* Meeting Log Tabelle */}
         <div className="mt-12 pt-6 border-t border-slate-900">
-          <div className="text-slate-600 mb-4 tracking-tighter uppercase">Internal Meeting Log</div>
-          <table className="w-full text-left opacity-50">
+          <div className="text-slate-600 mb-4 tracking-tighter uppercase font-bold">Meeting Log Table</div>
+          <table className="w-full text-left opacity-60">
             <thead>
-              <tr className="border-b border-slate-900">
-                <th className="pb-2">TIME</th>
+              <tr className="border-b border-slate-900 text-[10px]">
+                <th className="pb-2">TIMESTAMP</th>
                 <th className="pb-2">AGENT</th>
-                <th className="pb-2">CONTENT</th>
+                <th className="pb-2">LOG_CONTENT</th>
               </tr>
             </thead>
             <tbody>
               {logs.map((l, i) => (
                 <tr key={i} className="border-b border-slate-900/50">
-                  <td className="py-2">{new Date(l.created_at).toLocaleTimeString()}</td>
-                  <td className="py-2 text-sky-900">{l.speaker_name}</td>
-                  <td className="py-2 italic">{l.content.slice(0, 50)}...</td>
+                  <td className="py-2 whitespace-nowrap">{new Date(l.created_at).toLocaleTimeString()}</td>
+                  <td className="py-2 text-sky-900 font-bold">{l.speaker_name}</td>
+                  <td className="py-2 italic line-clamp-1">{l.content.slice(0, 60)}...</td>
                 </tr>
               ))}
             </tbody>
@@ -135,11 +144,12 @@ export default function OrigoChat() {
       <footer className="p-6 border-t border-slate-900 bg-black">
         <form onSubmit={sendMessage} className="flex gap-4 max-w-4xl mx-auto">
           <input 
-            className="flex-1 bg-transparent border-b border-slate-800 focus:border-sky-500 outline-none py-1"
+            className="flex-1 bg-transparent border-b border-slate-800 focus:border-sky-500 outline-none py-1 transition-all"
             value={input} onChange={(e) => setInput(e.target.value)} 
-            placeholder="Command Alpha..."
+            placeholder="System Command..."
+            disabled={loading}
           />
-          <button type="submit" className="text-sky-500 font-bold">EXECUTE</button>
+          <button type="submit" disabled={loading} className="text-sky-500 font-bold uppercase hover:text-white">Execute</button>
         </form>
       </footer>
     </div>
