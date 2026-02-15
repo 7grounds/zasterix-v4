@@ -1,3 +1,11 @@
+const sendMessage = async (e: React.FormEvent) => {
+  e.preventDefault();
+  alert("Frontend reagiert!"); // Füge das hier ein
+  if (!input.trim() || loading) return;
+
+
+
+
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
