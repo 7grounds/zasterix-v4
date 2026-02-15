@@ -250,6 +250,11 @@ Bist du einverstanden? (Antworte mit 'ja' oder 'bestätigt' zum Starten)`;
         activeProjectId = newProject.id;
       }
 
+      // Ensure activeProjectId is defined
+      if (!activeProjectId) {
+        throw new Error("Project ID is required to start discussion");
+      }
+
       // Start discussion - Manager L3 opens
       const managerL3 = await getAgent("Manager L3", organizationId);
       if (!managerL3) {
