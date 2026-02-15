@@ -5,8 +5,9 @@
  * @REQUIRED_TOOLS ["logManagementProtocol"]
  */
 import { logManagementProtocol } from "@/core/agent-factory";
+import Anthropic from "@anthropic-ai/sdk";
 
-type ProviderId = "openai" | "anthropic" | "google";
+type ProviderId = "openai" | "anthropic" | "google" | "groq";
 
 type SmartAIRequest = {
   prompt: string;
@@ -25,7 +26,7 @@ type ProviderHandler = (prompt: string) => Promise<string>;
 const normalizeProvider = (value: string | undefined): ProviderId | null => {
   if (!value) return null;
   const lower = value.trim().toLowerCase();
-  if (lower === "openai" || lower === "anthropic" || lower === "google") {
+  if (lower === "openai" || lower === "anthropic" || lower === "google" || lower === "groq") {
     return lower;
   }
   return null;
@@ -56,13 +57,43 @@ const providerHandlers: Record<ProviderId, ProviderHandler> = {
     if (!process.env.ANTHROPIC_API_KEY) {
       throw new Error("Anthropic API key missing.");
     }
-    return `Anthropic response placeholder: ${prompt}`;
+    
+    // Initialize Claude (Anthropic) client
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+    
+    // Call Claude API
+    const message = await anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022", // Latest Claude 3.5 Sonnet
+      max_tokens: 4096,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+    });
+    
+    // Extract text from response
+    const textContent = message.content.find((block) => block.type === "text");
+    if (!textContent || textContent.type !== "text") {
+      throw new Error("No text content in Claude response");
+    }
+    
+    return textContent.text;
   },
   google: async (prompt) => {
     if (!process.env.GOOGLE_AI_API_KEY) {
       throw new Error("Google AI API key missing.");
     }
     return `Google AI response placeholder: ${prompt}`;
+  },
+  groq: async (prompt) => {
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error("Groq API key missing.");
+    }
+    return `Groq response placeholder: ${prompt}`;
   },
 };
 

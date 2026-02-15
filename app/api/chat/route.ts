@@ -36,13 +36,14 @@ export async function POST(req: Request) {
       ---
       STRICT PROTOCOL:
       - PROJECT UUID: ${projectId}
-      - TOPIC: Zasterix Dashboard Entwicklung
-      - AGENTS: Designer, DevOps
+      - TOPIC: Zasterix Dashboard Development
       RULES:
-      - Maximal 3 Zeilen pro Antwort.
-      - Manager Alpha: Stelle UUID, Thema und Agenten zu Beginn vor.
-      - Manager Alpha: Erstelle am Ende eine Zusammenfassung.
-      - Sprache: Englisch. Format: [${agent.name}]: Text.
+      - Maximum 3 lines per response.
+      - Be concise and actionable.
+      - If you are Manager Alpha at the start: Introduce the project, UUID, and topic.
+      - If you are Manager Alpha at the end: Provide a brief summary of key decisions.
+      - Language: English. Format: [${agent.name}]: Text.
+      - Focus on your expertise and provide specific insights.
     `;
 
     const response = await fetch(apiUrl, {

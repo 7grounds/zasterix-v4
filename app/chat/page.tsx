@@ -74,30 +74,46 @@ export default function OrigoChat() {
     setLoading(true);
 
     try {
+      // Manager Alpha starts
       const data = await callApi(input, "Manager Alpha", updatedHistory);
       const leaderMsg: Message = { role: "assistant", text: data.text, title: data.title };
       let chainContext = [...updatedHistory, leaderMsg];
       setMessages(chainContext);
 
-      const specialists = ["Designer", "DevOps"]; 
-      let lastOutput = data.text;
+      // Fetch available specialist agents from database
+      const { data: agentsData } = await supabase
+        .from('agent_templates')
+        .select('name')
+        .eq('level', 2)
+        .limit(4);
 
-      for (const agentName of specialists) {
-        if (new RegExp(agentName, "i").test(lastOutput)) {
-          const specData = await callApi(input, agentName, chainContext);
+      const specialists = agentsData?.map(a => a.name) || ["Designer", "DevOps"]; 
+
+      // Auto-trigger: ALL invited agents respond automatically (no mention required)
+      // Simulate 2 rounds of discussion
+      for (let round = 1; round <= 2; round++) {
+        for (const agentName of specialists) {
+          const promptMsg = round === 1 
+            ? `Contribute to the discussion about: ${input}. Keep it to 3 lines max.`
+            : `Add your final thoughts or build on previous contributions. 3 lines max.`;
+          
+          const specData = await callApi(promptMsg, agentName, chainContext);
           const specMsg: Message = { role: "assistant", text: specData.text, title: specData.title };
           chainContext = [...chainContext, specMsg];
           setMessages(chainContext);
-          lastOutput = specData.text;
+          
+          // Small delay for UX
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
 
-      if (chainContext.length > updatedHistory.length + 1) {
-        const sumData = await callApi("Summarize the final decisions.", "Manager Alpha", chainContext);
-        setMessages(prev => [...prev, { role: "assistant", text: sumData.text, title: "SUMMARY" }]);
-      }
-    } catch {
-      setMessages(prev => [...prev, { role: "system", text: "Sync Error.", title: "SYSTEM" }]);
+      // Manager Alpha summarizes
+      const sumData = await callApi("Provide a brief summary of the key decisions and next steps from this discussion.", "Manager Alpha", chainContext);
+      setMessages(prev => [...prev, { role: "assistant", text: sumData.text, title: "SUMMARY" }]);
+      
+    } catch (error) {
+      console.error('Chat error:', error);
+      setMessages(prev => [...prev, { role: "system", text: "Sync Error. Check console for details.", title: "SYSTEM" }]);
     } finally {
       setLoading(false);
     }
