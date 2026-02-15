@@ -25,6 +25,7 @@ interface AgentStatusMonitorProps {
 }
 
 // Define type for Supabase response with nested agent_templates
+// Note: Supabase returns foreign key relationships as arrays
 interface ParticipantWithAgent {
   id: string;
   agent_id: string | null;
@@ -33,7 +34,7 @@ interface ParticipantWithAgent {
   status: string;
   agent_templates: {
     name: string;
-  } | null;
+  }[] | null;
 }
 
 export default function AgentStatusMonitor({ projectId }: AgentStatusMonitorProps) {
@@ -84,7 +85,7 @@ export default function AgentStatusMonitor({ projectId }: AgentStatusMonitorProp
           role: p.role,
           sequence_order: p.sequence_order,
           status: p.status,
-          agent_name: p.agent_templates?.name || (p.role === 'user' ? 'User (You)' : 'Unknown'),
+          agent_name: p.agent_templates?.[0]?.name || (p.role === 'user' ? 'User (You)' : 'Unknown'),
         }));
 
         setParticipants(mappedParticipants);
