@@ -31,7 +31,6 @@ export async function POST(req: Request) {
       ? "https://api.groq.com/openai/v1/chat/completions" 
       : "https://api.x.ai/v1/chat/completions";
 
-    // Injektion der strikten Regeln und Projektdaten
     const customSystemPrompt = `
       ${agent.system_prompt}
       ---
@@ -79,7 +78,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ text: aiContent, title: agent.name });
 
-  } catch (error) {
+  } catch {
+    // Fehlerbehandlung ohne ungenutzte Variable 'error'
     return NextResponse.json({ error: "Origo Brain Error" }, { status: 500 });
   }
 }
