@@ -14,7 +14,7 @@ interface Project {
   name: string;
   status: string;
   created_at: string;
-  metadata: any;
+  metadata: Record<string, unknown> | null;
 }
 
 interface DiscussionLog {
@@ -24,7 +24,7 @@ interface DiscussionLog {
   content: string;
   round_number: number | null;
   turn_index: number | null;
-  metadata: any;
+  metadata: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -451,7 +451,7 @@ export default function SystemDiagnosticsPage() {
             {data?.projects.length === 0 && (
               <div className="p-6 text-center text-gray-500">
                 <p className="font-semibold">No discussion projects found</p>
-                <p className="text-sm mt-1">Check projects table WHERE type = 'discussion'</p>
+                <p className="text-sm mt-1">Check projects table WHERE type = &apos;discussion&apos;</p>
               </div>
             )}
           </div>
