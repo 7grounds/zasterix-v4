@@ -142,6 +142,194 @@ Specialists (L2) → Domain experts (Hotel, Tourism, Guide, etc.)
 - **BUILD**: Approval workflows and task review interfaces
 - **SHOW**: Preview of what will happen before execution
 
+---
+
+## AGENT PARTICIPATION LOGIC
+
+When implementing agent responses in multi-agent discussions:
+
+### How Agents Respond:
+1. **Check discussion_logs** table for conversation history
+2. **Identify current speaker** from `discussionConfig.agents` array using `currentAgentIndex`
+3. **Fetch agent's system_prompt** from `agent_templates` table
+4. **Build context** from previous discussion messages
+5. **Call AI API** (Groq/Claude) with agent's prompt and context
+6. **Save response** to `discussion_logs` and `universal_history` tables
+7. **Update state** increment `currentAgentIndex`, advance to next agent or round
+
+### Auto-Trigger Pattern:
+```typescript
+// After Manager L3 opens discussion, auto-trigger next agent
+if (phase === "discussion" && nextSpeaker !== "user") {
+  setTimeout(async () => {
+    // Automatically call next agent without user input
+    await callNextAgent(discussionState);
+  }, 1000);
+}
+```
+
+### Key Principles:
+- ✅ Agents respond automatically based on turn order
+- ✅ No manual user input needed between agent turns
+- ✅ User can interject by sending a message
+- ✅ State persists across API calls
+- ✅ All responses logged to universal_history
+
+---
+
+## MEETING HIERARCHY
+
+### Current Implementation (No New Table Needed):
+The meeting hierarchy is managed through the **discussionConfig.agents array** stored in `projects.metadata`:
+
+```typescript
+discussionConfig: {
+  agents: ["Manager L3", "Hotel Expert L2", "Tourism Expert L2", "Guide Expert L2"],
+  linesPerAgent: 3,
+  rounds: 3,
+  topic: "Winter Tourism Strategy"
+}
+```
+
+### How Hierarchy Works:
+- **Manager L3** always opens the discussion (index 0)
+- **Specialists (L2)** follow in the order defined in the agents array
+- **Turn-taking** managed via `currentAgentIndex` counter
+- **Flexible** - different hierarchy per discussion
+- **Stored** in `projects.metadata` as JSONB
+
+### Why No meeting_hierarchy Table:
+- ✅ Follows Origo principle: No new tables without necessity
+- ✅ More flexible: Can customize per discussion
+- ✅ Easier to modify: Just update JSONB array
+- ✅ Already working: Current implementation is optimal
+- ✅ Audit trail: Full history in universal_history
+
+### Determining Speaker Order:
+```typescript
+// Current speaker
+const currentAgent = discussionConfig.agents[currentAgentIndex];
+
+// Next speaker (wrap around at end of array)
+const nextIndex = (currentAgentIndex + 1) % agents.length;
+const nextAgent = discussionConfig.agents[nextIndex];
+```
+
+---
+
+## DATABASE SCHEMA PRIORITY
+
+**ALWAYS check existing schema BEFORE writing any code:**
+
+### Required Steps:
+1. **Read migrations first**: Check `supabase/migrations/*.sql` files
+2. **Use existing tables**: `agent_templates`, `projects`, `discussion_logs`, `universal_history`
+3. **Extend with JSONB**: Use `metadata`, `payload`, `logic_template` columns
+4. **Ask before new tables**: No new tables without explicit user approval
+5. **Follow RLS policies**: Respect row-level security
+
+### When Asked to Add Features:
+```
+❌ DON'T: "Let's create a new meeting_hierarchy table"
+✅ DO: "We can store hierarchy in projects.metadata.agents array"
+
+❌ DON'T: "Create a tasks table for agent tasks"
+✅ DO: "Store tasks in universal_history.payload with type='task'"
+
+❌ DON'T: "Add a new messages table"
+✅ DO: "Use existing discussion_logs table"
+```
+
+---
+
+## AI MODEL CONFIGURATION
+
+### Primary Provider: Claude (Anthropic)
+- **Model**: `claude-3-5-sonnet-20241022`
+- **Best For**: Complex reasoning, code architecture, strategic decisions
+- **Cost**: $0.80 per 1,000 tokens
+- **API Key**: `ANTHROPIC_API_KEY` in `.env`
+
+### Backup Provider: Groq
+- **Model**: `llama-3.1-8b-instant`
+- **Best For**: Fast responses, simple tasks, high volume
+- **Cost**: $0.10 per 1,000 tokens
+- **API Key**: `GROQ_API_KEY` in `.env`
+
+### Failover Chain:
+```
+Claude (complex reasoning)
+  ↓ (if unavailable)
+Groq (fast & cheap)
+  ↓ (if unavailable)
+OpenAI (general purpose)
+  ↓ (if unavailable)
+Google AI (multi-modal)
+```
+
+### Usage in Code:
+```typescript
+import { getSmartAIResponse } from "@/core/ai-bridge";
+
+const response = await getSmartAIResponse({
+  prompt: systemPrompt + "\n\n" + context,
+  userId,
+  organizationId,
+});
+```
+
+---
+
+## TROUBLESHOOTING AGENT RESPONSES
+
+### Issue: Agents Not Responding After First Message
+**Check:**
+- Is `discussionState` being passed in API request?
+- Is `currentAgentIndex` incrementing correctly?
+- Is auto-trigger setTimeout firing?
+- Are API keys (GROQ_API_KEY/ANTHROPIC_API_KEY) set?
+
+**Solution:**
+```typescript
+// Ensure state is updated and passed
+const newState = {
+  phase: data.phase,
+  projectId: data.projectId,
+  currentRound: data.currentRound,
+  currentAgentIndex: data.currentAgentIndex,
+  discussionConfig: data.discussionConfig,
+};
+setDiscussionState(newState);
+```
+
+### Issue: Wrong Agent Speaking
+**Check:**
+- Is `currentAgentIndex` matching the correct agent in the array?
+- Is the array order correct in `discussionConfig.agents`?
+
+**Solution:**
+```typescript
+// Verify agent selection
+const currentAgent = discussionConfig.agents[currentAgentIndex];
+console.log("Current agent:", currentAgent, "at index:", currentAgentIndex);
+```
+
+### Issue: Discussion Stops After One Round
+**Check:**
+- Is `currentRound` incrementing?
+- Is the round limit (default: 3) being respected?
+- Is the phase transitioning correctly?
+
+**Solution:**
+```typescript
+// Check round progression
+if (currentAgentIndex === 0 && currentRound < 3) {
+  currentRound++; // Move to next round
+}
+```
+
+---
+
 ## Current Database Schema (Always Reference These)
 
 ### agent_templates
