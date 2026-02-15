@@ -12,10 +12,9 @@ export async function POST(req: Request) {
       message, 
       history = [], 
       targetTitle = "Manager Alpha", 
-      projectId // Die ID aus deiner public.projects Tabelle
+      projectId 
     } = await req.json();
 
-    // 1. Agenten-Konfiguration aus der Datenbank laden (passend zu deinem Schema)
     const { data: agent, error: dbError } = await supabase
       .from("agent_templates")
       .select("id, name, system_prompt, provider, model_name, metadata, engine_type")
@@ -26,20 +25,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Agent nicht gefunden" }, { status: 404 });
     }
 
-    // 2. Blueprint-Logik aus den Metadaten extrahieren
     const blueprint = agent.metadata?.blueprint;
     const blueprintContext = blueprint 
       ? `\n[BLUEPRINT ACTIVE]: ${JSON.stringify(blueprint.keywords)}` 
       : "";
 
-    // 3. Provider-Konfiguration (Groq vs xAI/OpenAI)
     const isGroq = agent.provider?.toLowerCase() === 'groq';
     const apiKey = isGroq ? process.env.GROQ_API_KEY : process.env.XAI_API_KEY;
     const apiUrl = isGroq 
       ? "https://api.groq.com/openai/v1/chat/completions" 
       : "https://api.x.ai/v1/chat/completions";
 
-    // 4. KI-Abfrage
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
@@ -63,30 +59,22 @@ export async function POST(req: Request) {
     const data = await response.json();
     const aiContent = data.choices?.[0]?.message?.content;
 
-    if (!aiContent) {
-      throw new Error("Leere Antwort vom Provider");
-    }
+    if (!aiContent) throw new Error("Provider Error");
 
-    // 5. Automatisches Logging in discussion_logs (dein neues Schema)
     if (projectId) {
       await supabase.from("discussion_logs").insert({
         project_id: projectId,
         agent_id: agent.id,
         speaker_name: agent.name,
         content: aiContent,
-        metadata: {
-          engine: agent.engine_type,
-          model: agent.model_name
-        }
+        metadata: { engine: agent.engine_type, model: agent.model_name }
       });
     }
 
-    return NextResponse.json({ 
-      text: aiContent,
-      title: agent.name
-    });
+    return NextResponse.json({ text: aiContent, title: agent.name });
 
   } catch {
     return NextResponse.json({ error: "Origo Brain Error" }, { status: 500 });
   }
 }
+
