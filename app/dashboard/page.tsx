@@ -289,6 +289,12 @@ const DashboardPage = () => {
 
   const toolTiles = [
     {
+      id: "main-dashboard",
+      label: "MAS Dashboard",
+      href: "/main-dashboard",
+      external: false,
+    },
+    {
       id: "manager-alpha",
       label: "Manager Alpha",
       href: "/manager-alpha",
