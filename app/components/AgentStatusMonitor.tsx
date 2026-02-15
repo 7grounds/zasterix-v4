@@ -1,7 +1,7 @@
 'use client';
 
 import { createClient } from '@supabase/supabase-js';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 
 interface Participant {
   id: string;
@@ -24,15 +24,32 @@ interface AgentStatusMonitorProps {
   projectId: string;
 }
 
+// Define type for Supabase response with nested agent_templates
+interface ParticipantWithAgent {
+  id: string;
+  agent_id: string | null;
+  role: 'manager' | 'leader' | 'specialist' | 'user';
+  sequence_order: number;
+  status: string;
+  agent_templates: {
+    name: string;
+  } | null;
+}
+
 export default function AgentStatusMonitor({ projectId }: AgentStatusMonitorProps) {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [latestTurnIndex, setLatestTurnIndex] = useState<number>(-1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  // Create supabase client once using useMemo to avoid re-creating on each render
+  const supabase = useMemo(
+    () =>
+      createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      ),
+    []
   );
 
   useEffect(() => {
@@ -60,8 +77,8 @@ export default function AgentStatusMonitor({ projectId }: AgentStatusMonitorProp
 
         if (participantsError) throw participantsError;
 
-        // Map participants with agent names
-        const mappedParticipants: Participant[] = (participantsData || []).map((p: any) => ({
+        // Map participants with agent names - using proper type instead of any
+        const mappedParticipants: Participant[] = (participantsData || []).map((p: ParticipantWithAgent) => ({
           id: p.id,
           agent_id: p.agent_id,
           role: p.role,
@@ -87,9 +104,9 @@ export default function AgentStatusMonitor({ projectId }: AgentStatusMonitorProp
         }
 
         setLoading(false);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error fetching initial data:', err);
-        setError(err.message);
+        setError(err instanceof Error ? err.message : 'An error occurred');
         setLoading(false);
       }
     };
@@ -142,7 +159,7 @@ export default function AgentStatusMonitor({ projectId }: AgentStatusMonitorProp
       supabase.removeChannel(logsChannel);
       supabase.removeChannel(participantsChannel);
     };
-  }, [projectId]);
+  }, [projectId, supabase]);
 
   // Calculate active sequence based on turn_index
   const activeSequence = latestTurnIndex + 1;
