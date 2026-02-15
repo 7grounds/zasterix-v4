@@ -102,6 +102,19 @@ async function getAgent(agentName: string, organizationId?: string) {
   const { data, error } = await query.maybeSingle();
   
   if (error || !data) {
+    // Try without organization filter as fallback
+    const { data: fallbackData } = await supabase
+      .from("agent_templates")
+      .select("id, name, system_prompt, ai_model_config")
+      .eq("name", agentName)
+      .maybeSingle();
+    
+    if (fallbackData) {
+      console.log(`Found ${agentName} without org filter`);
+      return fallbackData;
+    }
+    
+    console.error(`Agent ${agentName} not found in database. Error:`, error);
     return null;
   }
 
@@ -178,8 +191,11 @@ export async function POST(req: Request) {
       // Now call Discussion Leader to propose config
       const discussionLeader = await getAgent("Discussion Leader", organizationId);
       if (!discussionLeader) {
+        console.error("Discussion Leader not found. Please run database migrations.");
         return NextResponse.json({
-          error: "Discussion Leader agent not found"
+          error: "Discussion Leader agent not found",
+          details: "The Discussion Leader agent is not in the database. Please run the migration: 20260215161500_fix_discussion_leader_constraint.sql",
+          resolution: "Contact your administrator to run database migrations"
         }, { status: 404 });
       }
 
