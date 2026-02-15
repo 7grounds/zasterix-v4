@@ -8,27 +8,38 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { message, history = [], targetTitle = "Manager Alpha" } = await req.json();
+    const { 
+      message, 
+      history = [], 
+      targetTitle = "Manager Alpha", 
+      projectId // Die ID aus deiner public.projects Tabelle
+    } = await req.json();
 
+    // 1. Agenten-Konfiguration aus der Datenbank laden (passend zu deinem Schema)
     const { data: agent, error: dbError } = await supabase
       .from("agent_templates")
-      .select("system_prompt, provider, model_name, name, metadata")
+      .select("id, name, system_prompt, provider, model_name, metadata, engine_type")
       .eq("name", targetTitle)
       .single();
 
     if (dbError || !agent) {
-      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+      return NextResponse.json({ error: "Agent nicht gefunden" }, { status: 404 });
     }
 
+    // 2. Blueprint-Logik aus den Metadaten extrahieren
     const blueprint = agent.metadata?.blueprint;
     const blueprintContext = blueprint 
       ? `\n[BLUEPRINT ACTIVE]: ${JSON.stringify(blueprint.keywords)}` 
       : "";
 
+    // 3. Provider-Konfiguration (Groq vs xAI/OpenAI)
     const isGroq = agent.provider?.toLowerCase() === 'groq';
     const apiKey = isGroq ? process.env.GROQ_API_KEY : process.env.XAI_API_KEY;
-    const apiUrl = isGroq ? "https://api.groq.com/openai/v1/chat/completions" : "https://api.x.ai/v1/chat/completions";
+    const apiUrl = isGroq 
+      ? "https://api.groq.com/openai/v1/chat/completions" 
+      : "https://api.x.ai/v1/chat/completions";
 
+    // 4. KI-Abfrage
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
@@ -40,7 +51,7 @@ export async function POST(req: Request) {
         messages: [
           { 
             role: "system", 
-            content: `${agent.system_prompt}${blueprintContext}\nAlways respond in English. Format: [${agent.name}]: Text.` 
+            content: `${agent.system_prompt}${blueprintContext}\nAntworte auf Englisch. Format: [${agent.name}]: Text.` 
           },
           ...history.slice(-6),
           { role: "user", content: message }
@@ -50,13 +61,28 @@ export async function POST(req: Request) {
     });
 
     const data = await response.json();
-    
-    if (!data.choices || !data.choices[0]) {
-      throw new Error("Invalid AI response");
+    const aiContent = data.choices?.[0]?.message?.content;
+
+    if (!aiContent) {
+      throw new Error("Leere Antwort vom Provider");
+    }
+
+    // 5. Automatisches Logging in discussion_logs (dein neues Schema)
+    if (projectId) {
+      await supabase.from("discussion_logs").insert({
+        project_id: projectId,
+        agent_id: agent.id,
+        speaker_name: agent.name,
+        content: aiContent,
+        metadata: {
+          engine: agent.engine_type,
+          model: agent.model_name
+        }
+      });
     }
 
     return NextResponse.json({ 
-      text: data.choices[0].message.content,
+      text: aiContent,
       title: agent.name
     });
 
