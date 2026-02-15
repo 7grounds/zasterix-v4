@@ -9,7 +9,7 @@ import { supabase } from "@/core/supabase";
 import { calculateCost, estimateTokens } from "@/core/cost-engine";
 import { EXECUTIVE_APPROVAL_TOKEN } from "@/core/governance";
 
-type ProviderId = "openai" | "anthropic" | "google";
+type ProviderId = "openai" | "anthropic" | "google" | "groq";
 
 type SmartAIRequest = {
   prompt: string;
@@ -32,7 +32,7 @@ type ProviderHandler = (prompt: string) => Promise<string>;
 const normalizeProvider = (value: string | undefined): ProviderId | null => {
   if (!value) return null;
   const lower = value.trim().toLowerCase();
-  if (lower === "openai" || lower === "anthropic" || lower === "google") {
+  if (lower === "openai" || lower === "anthropic" || lower === "google" || lower === "groq") {
     return lower;
   }
   return null;
@@ -70,6 +70,12 @@ const providerHandlers: Record<ProviderId, ProviderHandler> = {
       throw new Error("Google AI API key missing.");
     }
     return `Google AI response placeholder: ${prompt}`;
+  },
+  groq: async (prompt) => {
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error("Groq API key missing.");
+    }
+    return `Groq response placeholder: ${prompt}`;
   },
 };
 
