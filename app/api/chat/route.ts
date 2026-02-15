@@ -79,7 +79,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ text: aiContent, title: agent.name });
 
   } catch {
-    // Fehlerbehandlung ohne ungenutzte Variable 'error'
     return NextResponse.json({ error: "Origo Brain Error" }, { status: 500 });
   }
 }
