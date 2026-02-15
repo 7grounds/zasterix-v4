@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -22,27 +21,35 @@ export default function DebugPage() {
       const data = await res.json();
       setResponse(JSON.stringify(data, null, 2));
       setStatus("Erfolg!");
-    } catch (err: any) {
+    } catch (err) {
       setStatus("FEHLER!");
-      setResponse(err.message || "Unbekannter Fehler");
+      // Sicherer Zugriff auf die Fehlermeldung ohne 'any'
+      const errorMessage = err instanceof Error ? err.message : "Unbekannter Netzwerkfehler";
+      setResponse(errorMessage);
     }
   };
 
   return (
     <div className="p-10 font-mono bg-black text-green-500 min-h-screen">
-      <h1 className="text-2xl mb-5">ORIGO SYSTEM CHECK</h1>
-      <div className="mb-5 p-4 border border-green-900">
-        Status: <span className="text-white">{status}</span>
+      <h1 className="text-2xl mb-5 uppercase tracking-tighter">Origo System Check</h1>
+      
+      <div className="mb-5 p-4 border border-green-900 bg-green-950/10">
+        STATUS: <span className="text-white ml-2 uppercase">{status}</span>
       </div>
+
       <button 
         onClick={runTest}
-        className="bg-green-700 text-black px-4 py-2 font-bold hover:bg-green-500"
+        className="bg-green-700 text-black px-6 py-3 font-black uppercase hover:bg-green-500 transition-colors"
       >
-        API TRIGGERN (PING)
+        API Trigger (Ping)
       </button>
-      <pre className="mt-10 p-4 bg-gray-900 text-xs overflow-auto border border-green-900">
-        API-Antwort: {response || "Keine Daten"}
-      </pre>
+
+      <div className="mt-10">
+        <div className="text-[10px] text-green-800 uppercase mb-2 tracking-widest font-bold">Raw Response Data:</div>
+        <pre className="p-4 bg-gray-950 text-xs overflow-auto border border-green-900 text-green-400 min-h-[200px]">
+          {response || "Warten auf Initialisierung..."}
+        </pre>
+      </div>
     </div>
   );
 }
