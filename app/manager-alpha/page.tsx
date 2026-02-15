@@ -141,7 +141,7 @@ export default function ManagerAlphaPage() {
       if (isConfirming && discussionState.needsConfirmation) {
         // Parse agents from last message
         const lastAssistantMsg = messages.filter(m => m.role === "assistant").pop();
-        const agentMatches = lastAssistantMsg?.content.match(/Agenten:\s*([^\\n]+)/);
+        const agentMatches = lastAssistantMsg?.content.match(/Agenten:\s*([^\n]+)/);
         const agentsText = agentMatches ? agentMatches[1] : "";
         const agents = agentsText.split(",").map(a => a.trim()).filter(Boolean);
 

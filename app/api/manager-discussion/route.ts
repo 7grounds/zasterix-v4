@@ -408,12 +408,22 @@ Bist du einverstanden? (Antworte mit 'ja' oder 'bestätigt' zum Starten)`;
         []
       );
 
-      // Update project with summary
+      // Get existing metadata
+      const { data: existingProject } = await supabase
+        .from("projects")
+        .select("metadata")
+        .eq("id", projectId)
+        .single();
+
+      const existingMetadata = existingProject?.metadata || {};
+
+      // Update project with summary, preserving existing metadata
       await supabase
         .from("projects")
         .update({
           status: "completed",
           metadata: {
+            ...existingMetadata,
             summary,
             completed_at: new Date().toISOString()
           }
