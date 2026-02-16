@@ -99,6 +99,7 @@ const DashboardPage = () => {
   const defaultStage = "stage-1";
   const defaultModule = "asset-coach";
   const [isLoading, setIsLoading] = useState(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [progress, setProgress] = useState<{
     stageId: string | null;
@@ -120,6 +121,8 @@ const DashboardPage = () => {
     const isAuthenticated = getAuthState();
     if (!isAuthenticated) {
       router.push('/');
+    } else {
+      setIsCheckingAuth(false);
     }
   }, [router]);
 
@@ -350,6 +353,11 @@ const DashboardPage = () => {
     clearAuthState();
     router.push('/');
   };
+
+  // Don't render dashboard content until authentication is verified
+  if (isCheckingAuth) {
+    return null;
+  }
 
   return (
     <div className="space-y-10">
