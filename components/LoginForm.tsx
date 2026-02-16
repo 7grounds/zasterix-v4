@@ -37,8 +37,8 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
       return;
     }
 
-    // Simulate a small delay for better UX
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Small delay for better UX (prevents jarring instant transitions)
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     // Validate credentials
     if (validateCredentials(email, password)) {

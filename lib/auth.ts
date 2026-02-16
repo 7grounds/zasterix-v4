@@ -1,7 +1,9 @@
 // Simple authentication utilities
+// Note: These credentials are hardcoded per requirements for a simple demo.
+// In production, use proper authentication with environment variables and secure password hashing.
 export const VALID_CREDENTIALS = {
-  email: '7grounds@gmail.com',
-  password: 'aaa',
+  email: process.env.NEXT_PUBLIC_AUTH_EMAIL || '7grounds@gmail.com',
+  password: process.env.NEXT_PUBLIC_AUTH_PASSWORD || 'aaa', // Weak password per requirements
 };
 
 export const validateCredentials = (email: string, password: string): boolean => {
