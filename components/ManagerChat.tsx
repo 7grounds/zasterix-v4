@@ -10,6 +10,7 @@ export default function ManagerChat() {
   const [input, setInput] = useState('');
   const [activeLeader, setActiveLeader] = useState<any>(null);
   const [round, setRound] = useState(0);
+  const [projectId, setProjectId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -20,6 +21,53 @@ export default function ManagerChat() {
     e.preventDefault();
     const cmd = input.trim();
     if (!cmd) return;
+
+    // If no project exists yet and command looks like a project prompt, initialize project
+    if (!projectId && cmd.toLowerCase().includes('session')) {
+      setMessages(prev => [...prev, { role: 'user', content: cmd }]);
+      setInput('');
+      
+      // Extract project name from command (simple extraction)
+      const projectNameMatch = cmd.match(/session\s+(?:about|on|for)?\s*(.+)/i);
+      const extractedName = projectNameMatch ? projectNameMatch[1].trim() : cmd;
+      
+      try {
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Initializing project...' }]);
+        
+        const response = await fetch('/api/projects/init', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: extractedName || 'Discussion Project'
+          })
+        });
+
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.project) {
+          setProjectId(data.project.id);
+          setMessages(prev => [
+            ...prev.slice(0, -1), // Remove "Initializing..." message
+            { 
+              role: 'assistant', 
+              content: `Project initialized!\nProject UUID: ${data.project.id}\nTopic: ${data.project.name}\n\nReady to start discussion.` 
+            }
+          ]);
+        } else {
+          setMessages(prev => [
+            ...prev.slice(0, -1),
+            { role: 'assistant', content: `Error: ${data.message || 'Failed to initialize project'}` }
+          ]);
+        }
+        return;
+      } catch (err: any) {
+        setMessages(prev => [
+          ...prev.slice(0, -1),
+          { role: 'assistant', content: `System Error: ${err.message}` }
+        ]);
+        return;
+      }
+    }
 
     setMessages(prev => [...prev, { role: 'user', content: cmd }]);
     setInput('');
@@ -50,7 +98,8 @@ export default function ManagerChat() {
         body: JSON.stringify({
           message: cmd,
           agentId: currentAgent?.id,
-          history: messages.slice(-10)
+          history: messages.slice(-10),
+          projectId: projectId
         }),
       });
 
@@ -86,6 +135,12 @@ export default function ManagerChat() {
             {activeLeader ? `${(activeLeader as any).name} | ROUND ${round}/3` : 'MANAGER_ALPHA_READY'}
           </span>
         </div>
+        {projectId && (
+          <div className="flex flex-col items-end">
+            <span className="text-[9px] uppercase tracking-[0.3em] text-gray-500">Project</span>
+            <span className="text-[10px] font-mono text-gray-400">{projectId.slice(0, 8)}...</span>
+          </div>
+        )}
       </div>
 
       {/* Chat Messages Area */}
