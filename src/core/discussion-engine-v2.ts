@@ -93,6 +93,9 @@ type DiscussionModelConfig = {
   stop?: string[];
 };
 
+// Configuration constants
+const MAX_DISCUSSION_ROUNDS = 3;
+const MAX_TURN_ITERATIONS = 20; // Safety limit to prevent infinite loops
 const DEFAULT_STOP_SEQUENCES = ["[", "\n\n", "Speaker:"];
 const GROQ_FALLBACK_CONFIG: DiscussionModelConfig = {
   provider: "groq",
@@ -585,10 +588,9 @@ export const advanceDiscussion = async (
   }
 
   // 3. Process AI agents turn by turn until we reach user again or complete
-  const MAX_ITERATIONS = 20;
   let iterations = 0;
 
-  while (iterations < MAX_ITERATIONS) {
+  while (iterations < MAX_TURN_ITERATIONS) {
     iterations += 1;
 
     // Check if we're back to user's turn or completed
@@ -602,9 +604,8 @@ export const advanceDiscussion = async (
       break;
     }
 
-    // Check if we've exceeded max rounds (e.g., 3 rounds)
-    const maxRounds = 3;
-    if (nextRound > maxRounds) {
+    // Check if we've exceeded max rounds
+    if (nextRound > MAX_DISCUSSION_ROUNDS) {
       await updateDiscussionState({
         supabase,
         projectId: input.projectId,
@@ -658,7 +659,7 @@ export const advanceDiscussion = async (
 
   // Update discussion state
   let finalStatus: "active" | "completed" = "active";
-  if (nextRound > 3) {
+  if (nextRound > MAX_DISCUSSION_ROUNDS) {
     finalStatus = "completed";
   }
 

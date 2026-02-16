@@ -53,10 +53,13 @@ BEGIN
         ON CONFLICT (project_id, agent_id) DO NOTHING;
     END IF;
 
-    -- Add user as a participant
+    -- Add user as a participant (user has no agent_id)
+    -- Note: ON CONFLICT with sequence_order ensures we don't duplicate the user slot
     INSERT INTO public.discussion_participants (project_id, agent_id, role, sequence_order)
     VALUES (discussion_project_id, NULL, 'user', 4)
-    ON CONFLICT (project_id, sequence_order) DO NOTHING;
+    ON CONFLICT (project_id, sequence_order) 
+    DO UPDATE SET role = EXCLUDED.role 
+    WHERE discussion_participants.role = 'user';
 
     -- Initialize discussion state if not exists
     INSERT INTO public.discussion_state (project_id, current_turn_index, current_round, status)
