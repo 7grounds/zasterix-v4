@@ -1,7 +1,4 @@
 import './globals.css'
-import { Inter } from 'next/font/google'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
   title: 'Zasterix v4 | Manager Chat',
@@ -15,7 +12,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="de">
-      <body className={`${inter.className} bg-slate-50 antialiased`}>
+      <body className="bg-slate-50 antialiased font-sans">
         {/* Hier gibt es keinen Header mehr, da dein Dashboard-Layout alles steuert */}
         {children}
       </body>
