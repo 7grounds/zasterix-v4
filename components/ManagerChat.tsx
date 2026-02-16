@@ -247,7 +247,11 @@ export default function ManagerChat() {
       console.log("   Message:", cmd);
       
       try {
-        setMessages(prev => [...prev, { role: 'assistant', content: '⏳ Processing...' }]);
+        // Show "Manager Alpha is thinking..." status
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: '🤔 Manager Alpha is thinking...\n\n(Processing your message and generating responses from discussion participants)' 
+        }]);
         
         const response = await fetch(`/api/discussions/${projectId}`, {
           method: 'POST',
@@ -263,27 +267,57 @@ export default function ManagerChat() {
         console.log("📥 Discussion API response:", data);
 
         if (data.status === 'success') {
-          // Remove "Processing..." message and add actual responses
+          // Remove "Manager is thinking..." message and add actual responses
           setMessages(prev => {
             const withoutProcessing = prev.slice(0, -1);
             const newEntries = data.entries || [];
             
-            // Convert entries to messages
-            const newMessages = newEntries.slice(-3).map((entry: any) => ({
-              role: entry.speakerRole === 'user' ? 'user' : 'assistant',
-              content: `[${entry.speakerName}]: ${entry.content}`
-            }));
+            // Find the last few entries that are new (after the user's message)
+            // Look for entries that came after the user message we just sent
+            const userMessageIndex = newEntries.findIndex((entry: any) => 
+              entry.content === cmd && entry.speakerRole === 'user'
+            );
+            
+            // Get entries after the user message (agent responses)
+            const newResponses = userMessageIndex >= 0 
+              ? newEntries.slice(userMessageIndex + 1) 
+              : newEntries.slice(-5); // Fallback to last 5 if not found
+            
+            // Convert entries to messages with better formatting
+            const newMessages = newResponses.map((entry: any) => {
+              const emoji = entry.speakerRole === 'manager' ? '👔' : 
+                           entry.speakerRole === 'specialist' ? '🎓' : '👤';
+              return {
+                role: entry.speakerRole === 'user' ? 'user' : 'assistant',
+                content: `${emoji} **${entry.speakerName}**:\n${entry.content}`
+              };
+            });
+            
+            // If no new responses, show a status message
+            if (newMessages.length === 0) {
+              newMessages.push({
+                role: 'assistant',
+                content: '✅ Message saved. Waiting for your next input.\n\n💡 Next speaker: ' + (data.nextSpeaker || 'You')
+              });
+            } else {
+              // Add status about next speaker
+              newMessages.push({
+                role: 'assistant',
+                content: `\n---\n📊 Discussion Status:\nNext speaker: ${data.nextSpeaker || 'You'}\nProject UUID: ${projectId.substring(0, 8)}...`
+              });
+            }
             
             return [...withoutProcessing, ...newMessages];
           });
 
           console.log("✅ Discussion updated");
           console.log("   Next speaker:", data.nextSpeaker || 'None');
+          console.log("   Total entries:", data.entries?.length || 0);
         } else {
           console.error("❌ Discussion API error:", data.message);
           setMessages(prev => [
             ...prev.slice(0, -1),
-            { role: 'assistant', content: `Error: ${data.message}` }
+            { role: 'assistant', content: `❌ Error: ${data.message}` }
           ]);
         }
         return;
@@ -291,7 +325,7 @@ export default function ManagerChat() {
         console.error("❌ Failed to call discussion API:", err);
         setMessages(prev => [
           ...prev.slice(0, -1),
-          { role: 'assistant', content: `System Error: ${err.message}` }
+          { role: 'assistant', content: `❌ System Error: ${err.message}\n\nPlease check the console for details.` }
         ]);
         return;
       }
