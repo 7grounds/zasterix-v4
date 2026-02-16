@@ -42,7 +42,7 @@ type DiscussionState = {
   project_id: string;
   current_turn_index: number;
   current_round: number;
-  status: "active" | "completed" | "paused";
+  is_active: boolean;
 };
 
 type DiscussionLog = {
@@ -223,7 +223,7 @@ const loadOrCreateDiscussionState = async (
       project_id: projectId,
       current_turn_index: 0,
       current_round: 1,
-      status: "active",
+      is_active: true,
     })
     .select()
     .single();
@@ -393,20 +393,20 @@ const updateDiscussionState = async ({
   projectId,
   turnIndex,
   round,
-  status,
+  isActive,
 }: {
   supabase: ReturnType<typeof createSupabaseAdmin>;
   projectId: string;
   turnIndex: number;
   round: number;
-  status: "active" | "completed" | "paused";
+  isActive: boolean;
 }) => {
   const { error } = await supabase
     .from("discussion_state")
     .update({
       current_turn_index: turnIndex,
       current_round: round,
-      status,
+      is_active: isActive,
       updated_at: new Date().toISOString(),
     })
     .eq("project_id", projectId);
@@ -509,7 +509,7 @@ export const getDiscussionState = async (projectId: string): Promise<DiscussionS
 
   // Determine next speaker
   let nextSpeaker: string | null = null;
-  if (state.status === "active" && state.current_turn_index < participants.length) {
+  if (state.is_active && state.current_turn_index < participants.length) {
     const nextParticipant = participants[state.current_turn_index];
     nextSpeaker = nextParticipant?.role ?? null;
   }
@@ -541,7 +541,7 @@ export const advanceDiscussion = async (
   }
 
   const state = await loadOrCreateDiscussionState(supabase, input.projectId);
-  if (state.status === "completed") {
+  if (!state.is_active) {
     throw new Error("Discussion is already completed.");
   }
 
@@ -610,7 +610,7 @@ export const advanceDiscussion = async (
         projectId: input.projectId,
         turnIndex: 0,
         round: nextRound,
-        status: "completed",
+        isActive: false,
       });
       break;
     }
@@ -657,9 +657,9 @@ export const advanceDiscussion = async (
   }
 
   // Update discussion state
-  let finalStatus: "active" | "completed" = "active";
+  let finalIsActive = true;
   if (nextRound > MAX_DISCUSSION_ROUNDS) {
-    finalStatus = "completed";
+    finalIsActive = false;
   }
 
   await updateDiscussionState({
@@ -667,7 +667,7 @@ export const advanceDiscussion = async (
     projectId: input.projectId,
     turnIndex: nextTurnIndex,
     round: nextRound,
-    status: finalStatus,
+    isActive: finalIsActive,
   });
 
   // Return updated state

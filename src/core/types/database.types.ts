@@ -275,7 +275,7 @@ export interface Database {
           project_id: string;
           current_turn_index: number;
           current_round: number;
-          status: string;
+          is_active: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -284,7 +284,7 @@ export interface Database {
           project_id: string;
           current_turn_index?: number;
           current_round?: number;
-          status?: string;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -293,7 +293,7 @@ export interface Database {
           project_id?: string;
           current_turn_index?: number;
           current_round?: number;
-          status?: string;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
