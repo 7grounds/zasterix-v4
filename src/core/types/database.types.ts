@@ -54,6 +54,12 @@ export interface Database {
           spawn_metadata: Json | null;
           produced_by: string | null;
           created_at: string | null;
+          discipline: string | null;
+          trigger_keywords: string[] | null;
+          engine_type: string | null;
+          code_name: string | null;
+          provider: string | null;
+          model_name: string | null;
         };
         Insert: {
           id?: string;
@@ -72,6 +78,12 @@ export interface Database {
           spawn_metadata?: Json | null;
           produced_by?: string | null;
           created_at?: string | null;
+          discipline?: string | null;
+          trigger_keywords?: string[] | null;
+          engine_type?: string | null;
+          code_name?: string | null;
+          provider?: string | null;
+          model_name?: string | null;
         };
         Update: {
           id?: string;
@@ -90,6 +102,12 @@ export interface Database {
           spawn_metadata?: Json | null;
           produced_by?: string | null;
           created_at?: string | null;
+          discipline?: string | null;
+          trigger_keywords?: string[] | null;
+          engine_type?: string | null;
+          code_name?: string | null;
+          provider?: string | null;
+          model_name?: string | null;
         };
         Relationships: [
           {
