@@ -1,31 +1,31 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import LoginForm from '../components/LoginForm';
-import Dashboard from '../components/Dashboard';
-import { getAuthState, setAuthState, clearAuthState } from '../lib/auth';
+import { getAuthState, setAuthState } from '../lib/auth';
 
 export default function Home() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
 
-  // Check authentication state on mount
+  // Check authentication state on mount and redirect if authenticated
   useEffect(() => {
     const authState = getAuthState();
-    setIsAuthenticated(authState);
-    setIsLoading(false);
-  }, []);
+    if (authState) {
+      // User is already logged in, redirect to dashboard
+      router.push('/dashboard');
+    } else {
+      setIsLoading(false);
+    }
+  }, [router]);
 
   const handleLogin = () => {
     setAuthState(true);
-    setIsAuthenticated(true);
+    // Redirect to dashboard after successful login
+    router.push('/dashboard');
   };
 
-  const handleLogout = () => {
-    clearAuthState();
-    setIsAuthenticated(false);
-  };
-
-  // Show loading state briefly
+  // Show loading state briefly while checking auth
   if (isLoading) {
     return (
       <main className="h-screen w-full bg-white flex items-center justify-center">
@@ -41,11 +41,7 @@ export default function Home() {
 
   return (
     <main className="h-screen w-full bg-white overflow-hidden">
-      {isAuthenticated ? (
-        <Dashboard onLogout={handleLogout} />
-      ) : (
-        <LoginForm onLogin={handleLogin} />
-      )}
+      <LoginForm onLogin={handleLogin} />
     </main>
   );
 }

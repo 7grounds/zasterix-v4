@@ -7,6 +7,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getButtonClasses } from "@/shared/components/Button";
 import { YuhConnector } from "@/shared/tools/YuhConnector";
@@ -23,6 +24,7 @@ import {
   type AgentInstance,
 } from "@/core/agent-factory";
 import { DynamicPayloadRenderer } from "@/shared/components/DynamicPayloadRenderer";
+import { getAuthState, clearAuthState } from "../../lib/auth";
 
 export const dynamic = 'force-dynamic';
 
@@ -93,6 +95,7 @@ const RecentAnalyses = ({ entries }: RecentAnalysesProps) => {
 };
 
 const DashboardPage = () => {
+  const router = useRouter();
   const defaultStage = "stage-1";
   const defaultModule = "asset-coach";
   const [isLoading, setIsLoading] = useState(true);
@@ -111,6 +114,14 @@ const DashboardPage = () => {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  // Check authentication on mount
+  useEffect(() => {
+    const isAuthenticated = getAuthState();
+    if (!isAuthenticated) {
+      router.push('/');
+    }
+  }, [router]);
 
   useEffect(() => {
     let isMounted = true;
@@ -335,30 +346,45 @@ const DashboardPage = () => {
     setIsCreatingAgent(false);
   };
 
+  const handleLogout = () => {
+    clearAuthState();
+    router.push('/');
+  };
+
   return (
     <div className="space-y-10">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            className={`rounded-full px-4 py-2 text-xs uppercase tracking-[0.24em] ${
+              activeTab === "overview"
+                ? "bg-emerald-500 text-slate-900"
+                : "border border-slate-800/70 text-slate-300"
+            }`}
+            type="button"
+            onClick={() => setActiveTab("overview")}
+          >
+            Overview
+          </button>
+          <button
+            className={`rounded-full px-4 py-2 text-xs uppercase tracking-[0.24em] ${
+              activeTab === "special-tools"
+                ? "bg-emerald-500 text-slate-900"
+                : "border border-slate-800/70 text-slate-300"
+            }`}
+            type="button"
+            onClick={() => setActiveTab("special-tools")}
+          >
+            Spezial-Tools
+          </button>
+        </div>
+        
         <button
-          className={`rounded-full px-4 py-2 text-xs uppercase tracking-[0.24em] ${
-            activeTab === "overview"
-              ? "bg-emerald-500 text-slate-900"
-              : "border border-slate-800/70 text-slate-300"
-          }`}
+          className="rounded-full border border-slate-800/70 px-4 py-2 text-xs uppercase tracking-[0.24em] text-slate-300 hover:bg-slate-800/50 transition-colors"
           type="button"
-          onClick={() => setActiveTab("overview")}
+          onClick={handleLogout}
         >
-          Overview
-        </button>
-        <button
-          className={`rounded-full px-4 py-2 text-xs uppercase tracking-[0.24em] ${
-            activeTab === "special-tools"
-              ? "bg-emerald-500 text-slate-900"
-              : "border border-slate-800/70 text-slate-300"
-          }`}
-          type="button"
-          onClick={() => setActiveTab("special-tools")}
-        >
-          Spezial-Tools
+          Logout
         </button>
       </div>
 
