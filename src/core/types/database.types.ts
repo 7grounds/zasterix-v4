@@ -36,6 +36,96 @@ export interface Database {
         };
         Relationships: [];
       };
+      discussion_logs: {
+        Row: {
+          id: string;
+          project_id: string | null;
+          agent_id: string | null;
+          speaker_name: string;
+          content: string;
+          turn_number: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id?: string | null;
+          agent_id?: string | null;
+          speaker_name: string;
+          content: string;
+          turn_number?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string | null;
+          agent_id?: string | null;
+          speaker_name?: string;
+          content?: string;
+          turn_number?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "discussion_logs_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "discussion_logs_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_templates";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      hierarchy: {
+        Row: {
+          id: string;
+          project_id: string | null;
+          agent_id: string | null;
+          agent_name: string;
+          turn_order: number;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id?: string | null;
+          agent_id?: string | null;
+          agent_name: string;
+          turn_order: number;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string | null;
+          agent_id?: string | null;
+          agent_name?: string;
+          turn_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "hierarchy_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "hierarchy_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_templates";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       agent_templates: {
         Row: {
           id: string;
@@ -320,6 +410,7 @@ export interface Database {
           status: string;
           metadata: Json;
           current_discussion_step: number;
+          current_turn_agent_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -331,6 +422,7 @@ export interface Database {
           status?: string;
           metadata?: Json;
           current_discussion_step?: number;
+          current_turn_agent_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -342,6 +434,7 @@ export interface Database {
           status?: string;
           metadata?: Json;
           current_discussion_step?: number;
+          current_turn_agent_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -351,6 +444,13 @@ export interface Database {
             columns: ["organization_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "projects_current_turn_agent_id_fkey";
+            columns: ["current_turn_agent_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_templates";
             referencedColumns: ["id"];
           },
         ];
