@@ -22,6 +22,74 @@ export default function ManagerChat() {
     const cmd = input.trim();
     if (!cmd) return;
 
+    // Quick command to check participants for a specific UUID
+    // Usage: "check 19199f1d-e370-4f91-b0a4-2d0b992e5b94" or "19199f1d-e370-4f91-b0a4-2d0b992e5b94"
+    const uuidPattern = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+    const uuidMatch = cmd.match(uuidPattern);
+    
+    if (uuidMatch) {
+      const targetProjectId = uuidMatch[1];
+      setMessages(prev => [...prev, { role: 'user', content: cmd }]);
+      setInput('');
+      
+      console.log("🔍 Checking participants for UUID:", targetProjectId);
+      try {
+        const response = await fetch(`/api/discussions/${targetProjectId}/participants`);
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.participants) {
+          let participantsMessage = `🎭 Diskussionsteilnehmer für Projekt ${targetProjectId}:\n\n`;
+          participantsMessage += `Anzahl: ${data.count}\n\n`;
+          
+          data.participants.forEach((p: any) => {
+            participantsMessage += `${p.sequence_order + 1}. ${p.name}\n`;
+            participantsMessage += `   Rolle: ${p.role}\n`;
+            participantsMessage += `   Disziplin: ${p.discipline || 'N/A'}\n`;
+            if (p.category && p.category !== 'N/A') {
+              participantsMessage += `   Kategorie: ${p.category}\n`;
+            }
+            participantsMessage += `\n`;
+          });
+          
+          participantsMessage += `\n💡 Um dieses Projekt als aktuelles zu verwenden, gib ein: "use ${targetProjectId}"`;
+          
+          console.log("✅ Participants loaded:", data.count);
+          setMessages(prev => [...prev, { role: 'assistant', content: participantsMessage }]);
+        } else {
+          console.error("❌ Failed to load participants:", data.message);
+          setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.message || 'Konnte Teilnehmer nicht laden'}` }]);
+        }
+        return;
+      } catch (err: any) {
+        console.error("❌ Error fetching participants:", err);
+        setMessages(prev => [...prev, { role: 'assistant', content: `Fehler: ${err.message}` }]);
+        return;
+      }
+    }
+
+    // Command to set a project as active
+    if (cmd.toLowerCase().startsWith('use ')) {
+      const targetUuid = cmd.substring(4).trim();
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      
+      if (uuidRegex.test(targetUuid)) {
+        setMessages(prev => [...prev, { role: 'user', content: cmd }]);
+        setInput('');
+        setProjectId(targetUuid);
+        console.log("✅ Active project set to:", targetUuid);
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `Projekt ${targetUuid} ist jetzt aktiv.\n\n💡 Gib "participants" ein, um die Teilnehmer zu sehen.` 
+        }]);
+        return;
+      } else {
+        setMessages(prev => [...prev, { role: 'user', content: cmd }]);
+        setInput('');
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Ungültiges UUID-Format.' }]);
+        return;
+      }
+    }
+
     // If no project exists yet and command looks like a project prompt, initialize project
     if (!projectId && cmd.toLowerCase().includes('session')) {
       setMessages(prev => [...prev, { role: 'user', content: cmd }]);
@@ -118,6 +186,46 @@ export default function ManagerChat() {
 
     setMessages(prev => [...prev, { role: 'user', content: cmd }]);
     setInput('');
+
+    // Handle "show participants" or "participants" command
+    if (cmd.toLowerCase().includes('participant') || cmd.toLowerCase().includes('teilnehmer')) {
+      if (!projectId) {
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Kein Projekt aktiv. Bitte starte zuerst eine Session.' }]);
+        return;
+      }
+
+      console.log("📋 Fetching participants for project:", projectId);
+      try {
+        const response = await fetch(`/api/discussions/${projectId}/participants`);
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.participants) {
+          let participantsMessage = `🎭 Diskussionsteilnehmer für Projekt ${projectId}:\n\n`;
+          participantsMessage += `Anzahl: ${data.count}\n\n`;
+          
+          data.participants.forEach((p: any) => {
+            participantsMessage += `${p.sequence_order + 1}. ${p.name}\n`;
+            participantsMessage += `   Rolle: ${p.role}\n`;
+            participantsMessage += `   Disziplin: ${p.discipline}\n`;
+            if (p.category && p.category !== 'N/A') {
+              participantsMessage += `   Kategorie: ${p.category}\n`;
+            }
+            participantsMessage += `\n`;
+          });
+          
+          console.log("✅ Participants loaded:", data.count);
+          setMessages(prev => [...prev, { role: 'assistant', content: participantsMessage }]);
+        } else {
+          console.error("❌ Failed to load participants:", data.message);
+          setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.message || 'Konnte Teilnehmer nicht laden'}` }]);
+        }
+        return;
+      } catch (err: any) {
+        console.error("❌ Error fetching participants:", err);
+        setMessages(prev => [...prev, { role: 'assistant', content: `Fehler: ${err.message}` }]);
+        return;
+      }
+    }
 
     // Validate UUID format before allowing discussion
     if (projectId) {
