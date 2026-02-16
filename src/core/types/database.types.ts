@@ -515,42 +515,6 @@ export interface Database {
         };
         Relationships: [];
       };
-      user_asset_history: {
-        Row: {
-          id: string;
-          user_id: string;
-          organization_id: string | null;
-          isin: string;
-          asset_name: string | null;
-          last_amount: number | null;
-          last_fee: number | null;
-          currency: string | null;
-          analyzed_at: string | null;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          organization_id?: string | null;
-          isin: string;
-          asset_name?: string | null;
-          last_amount?: number | null;
-          last_fee?: number | null;
-          currency?: string | null;
-          analyzed_at?: string | null;
-        };
-        Update: {
-          id?: string;
-          user_id?: string;
-          organization_id?: string | null;
-          isin?: string;
-          asset_name?: string | null;
-          last_amount?: number | null;
-          last_fee?: number | null;
-          currency?: string | null;
-          analyzed_at?: string | null;
-        };
-        Relationships: [];
-      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
