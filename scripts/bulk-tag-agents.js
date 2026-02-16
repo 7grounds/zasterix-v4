@@ -54,7 +54,7 @@ const CATEGORIZATION_RULES = {
     patterns: ['manager', 'lead', 'director']
   },
   tourism: {
-    category: 'Tourism',
+    category: 'tourism',
     patterns: ['tourism', 'tourismus', 'hotel', 'guide', 'berner oberland', 'destination']
   }
 };
@@ -152,7 +152,7 @@ async function analyzeAgents(agents) {
     // Check tourism patterns
     if (matchesPatterns(agent.name, CATEGORIZATION_RULES.tourism.patterns) ||
         matchesPatterns(agent.description, CATEGORIZATION_RULES.tourism.patterns)) {
-      if (!agent.category || agent.category === '' || agent.category !== 'Tourism') {
+      if (!agent.category || agent.category === '' || agent.category !== 'tourism') {
         update.changes.category = CATEGORIZATION_RULES.tourism.category;
         hasChanges = true;
         stats.tourism++;

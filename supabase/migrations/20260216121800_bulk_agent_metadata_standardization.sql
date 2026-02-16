@@ -59,7 +59,7 @@ AND (engine_type IS NULL OR engine_type = '');
 
 -- Tourism category agents
 UPDATE public.agent_templates
-SET category = 'Tourism'
+SET category = 'tourism'
 WHERE (
   name ILIKE '%Tourism%'
   OR name ILIKE '%Tourismus%'
@@ -70,7 +70,7 @@ WHERE (
   OR description ILIKE '%hotel%'
   OR description ILIKE '%destination%'
 )
-AND (category IS NULL OR category = '' OR category != 'Tourism');
+AND (category IS NULL OR category = '' OR category != 'tourism');
 
 -- Step 4: Standardize model_name and provider for all active agents
 UPDATE public.agent_templates
@@ -142,7 +142,7 @@ BEGIN
   SELECT COUNT(*) INTO design_count FROM public.agent_templates WHERE discipline = 'frontend_design';
   SELECT COUNT(*) INTO devops_count FROM public.agent_templates WHERE discipline = 'infrastructure';
   SELECT COUNT(*) INTO manager_count FROM public.agent_templates WHERE engine_type = 'manager_logic';
-  SELECT COUNT(*) INTO tourism_count FROM public.agent_templates WHERE category = 'Tourism';
+  SELECT COUNT(*) INTO tourism_count FROM public.agent_templates WHERE category = 'tourism';
   SELECT COUNT(*) INTO total_count FROM public.agent_templates;
   
   RAISE NOTICE 'Agent Templates Bulk Update Complete:';
