@@ -31,6 +31,9 @@ export default function ManagerChat() {
       const projectNameMatch = cmd.match(/session\s+(?:about|on|for)?\s*(.+)/i);
       const extractedName = projectNameMatch ? projectNameMatch[1].trim() : cmd;
       
+      console.log("🚀 Initializing project...");
+      console.log("   Project name:", extractedName);
+      
       try {
         setMessages(prev => [...prev, { role: 'assistant', content: 'Initializing project...' }]);
         
@@ -44,26 +47,38 @@ export default function ManagerChat() {
 
         const data = await response.json();
         
+        console.log("📥 API Response:", data);
+        
         if (data.status === 'success' && data.project) {
-          setProjectId(data.project.id);
+          const receivedProjectId = data.project.id;
+          console.log("✅ Project initialized successfully!");
+          console.log("   Project ID:", receivedProjectId);
+          console.log("   Topic:", data.project.topic_objective || data.project.name);
+          console.log("   Participants:", data.participants?.length || 0);
+          
+          setProjectId(receivedProjectId);
           setMessages(prev => [
             ...prev.slice(0, -1), // Remove "Initializing..." message
             { 
               role: 'assistant', 
-              content: `Project initialized!\nProject UUID: ${data.project.id}\nTopic: ${data.project.name}\n\nReady to start discussion.` 
+              content: `Project initialized!\n\nProject UUID: ${receivedProjectId}\nTopic: ${data.project.topic_objective || data.project.name}\nParticipants: ${data.participants?.length || 0}\n\nReady to start discussion. Manager Alpha is standing by.` 
             }
           ]);
         } else {
+          console.error("❌ Project initialization failed");
+          console.error("   Error:", data.message);
+          console.error("   Details:", data.details);
           setMessages(prev => [
             ...prev.slice(0, -1),
-            { role: 'assistant', content: `Error: ${data.message || 'Failed to initialize project'}` }
+            { role: 'assistant', content: `Error: ${data.message || 'Failed to initialize project'}\n\n${data.details ? 'Details: ' + data.details : ''}` }
           ]);
         }
         return;
       } catch (err: any) {
+        console.error("❌ System error during project initialization:", err);
         setMessages(prev => [
           ...prev.slice(0, -1),
-          { role: 'assistant', content: `System Error: ${err.message}` }
+          { role: 'assistant', content: `System Error: ${err.message}\n\nPlease check the console for details.` }
         ]);
         return;
       }

@@ -43,10 +43,12 @@ export async function POST(req: Request) {
     }
 
     // 1. Create project in projects table
+    console.log("📝 Creating project:", projectName);
     const { data: project, error: projectError } = await supabase
       .from("projects")
       .insert({
         name: projectName,
+        topic_objective: projectName, // Store topic for Manager agents
         type: "discussion",
         status: "active",
         organization_id: organizationId,
@@ -75,19 +77,30 @@ export async function POST(req: Request) {
       .single();
 
     if (projectError || !project) {
-      console.error("Project creation error:", projectError);
+      console.error("❌ Project creation error:", projectError);
+      console.error("   Error details:", {
+        message: projectError?.message,
+        details: projectError?.details,
+        hint: projectError?.hint,
+        code: projectError?.code
+      });
       return NextResponse.json(
         { 
           status: "error", 
-          message: projectError?.message || "Failed to create project." 
+          message: projectError?.message || "Failed to create project.",
+          details: projectError?.details || "Unknown error"
         },
         { status: 500 }
       );
     }
 
     const projectId = project.id;
+    console.log("✅ Project created successfully!");
+    console.log("   Project ID:", projectId);
+    console.log("   Project name:", project.name);
 
     // 2. Create discussion_state for the project
+    console.log("📝 Creating discussion_state for project:", projectId);
     const { error: stateError } = await supabase
       .from("discussion_state")
       .insert({
@@ -98,27 +111,40 @@ export async function POST(req: Request) {
       });
 
     if (stateError) {
-      console.error("Discussion state creation error:", stateError);
+      console.error("❌ Discussion state creation error:", stateError);
+      console.error("   Error details:", {
+        message: stateError.message,
+        details: stateError.details,
+        hint: stateError.hint
+      });
+      console.log("   Cleaning up project:", projectId);
       // Clean up project if state creation fails
       await supabase.from("projects").delete().eq("id", projectId);
       return NextResponse.json(
         { 
           status: "error", 
-          message: stateError.message || "Failed to create discussion state." 
+          message: stateError.message || "Failed to create discussion state.",
+          details: stateError.details || "Unknown error"
         },
         { status: 500 }
       );
     }
 
+    console.log("✅ Discussion state created successfully");
+
     // 3. Create discussion participants
     // First, get the agent IDs for the default agents
+    console.log("📝 Loading agent templates for participants...");
     const { data: agents, error: agentsError } = await supabase
       .from("agent_templates")
       .select("id, name")
       .in("name", ["Manager L3", "Hotel Expert L2", "Guide Expert L2", "Tourismus Expert L2"]);
 
     if (agentsError) {
-      console.error("Failed to load agents:", agentsError);
+      console.error("❌ Failed to load agents:", agentsError);
+      console.error("   Warning: Will create participants without agent references");
+    } else {
+      console.log("✅ Loaded", agents?.length || 0, "agent templates");
     }
 
     // Create a map of agent names to IDs
@@ -126,10 +152,12 @@ export async function POST(req: Request) {
     if (agents) {
       for (const agent of agents) {
         agentMap.set(agent.name, agent.id);
+        console.log("   Agent mapped:", agent.name, "→", agent.id);
       }
     }
 
     // Create participants in order
+    console.log("📝 Creating discussion participants...");
     const participants = [
       { 
         project_id: projectId, 
@@ -163,24 +191,38 @@ export async function POST(req: Request) {
       }
     ];
 
-    const { error: participantsError } = await supabase
+    const { error: participantsError, data: createdParticipants } = await supabase
       .from("discussion_participants")
-      .insert(participants);
+      .insert(participants)
+      .select();
 
     if (participantsError) {
-      console.error("Failed to create participants:", participantsError);
-      // Continue anyway - participants can be added later if needed
+      console.error("❌ Failed to create participants:", participantsError);
+      console.error("   Error details:", {
+        message: participantsError.message,
+        details: participantsError.details,
+        hint: participantsError.hint
+      });
+      console.log("   Warning: Continuing without participants - they must be added later");
+    } else {
+      console.log("✅ Created", createdParticipants?.length || 0, "participants");
     }
+
+    console.log("🎉 Project initialization complete!");
+    console.log("   Project ID:", projectId);
+    console.log("   Ready for Manager Alpha to start");
 
     return NextResponse.json({
       status: "success",
       project: {
         id: projectId,
         name: project.name,
+        topic_objective: project.topic_objective || project.name,
         type: project.type,
         status: project.status,
         created_at: project.created_at
-      }
+      },
+      participants: createdParticipants || []
     });
 
   } catch (error: unknown) {
