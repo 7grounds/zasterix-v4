@@ -312,15 +312,22 @@ const generateAgentResponse = async ({
   agent,
   conversationHistory,
   rules,
+  projectTopic,
 }: {
   agent: DiscussionAgent;
   conversationHistory: string;
   rules: string[];
+  projectTopic?: string;
 }) => {
   const modelConfig = parseModelConfig(agent.ai_model_config) ?? GROQ_FALLBACK_CONFIG;
   const model = resolveModelFactory(modelConfig);
 
+  const topicContext = projectTopic 
+    ? `Diskussionsthema: ${projectTopic}\n\n`
+    : '';
+
   const instruction = [
+    topicContext,
     agent.system_prompt,
     "Du bist in einer moderierten Diskussionsrunde.",
     rules.length > 0
@@ -566,6 +573,10 @@ export const advanceDiscussion = async (
 
   // 1. Save user message
   const userContent = input.message.trim();
+  console.log("💬 Saving user message to discussion_logs");
+  console.log("   Project ID:", input.projectId);
+  console.log("   Content:", userContent.substring(0, 50) + "...");
+  
   await saveDiscussionLog({
     supabase,
     projectId: input.projectId,
@@ -575,6 +586,11 @@ export const advanceDiscussion = async (
     turnIndex: state.current_turn_index,
     roundNumber: state.current_round,
   });
+  console.log("✅ User message saved");
+
+  // Extract project topic for agent context
+  const projectTopic = (project as { topic_objective?: string }).topic_objective || project.name;
+  console.log("📋 Project topic:", projectTopic);
 
   // 2. Increment turn index
   let nextTurnIndex = state.current_turn_index + 1;
@@ -627,17 +643,26 @@ export const advanceDiscussion = async (
       continue;
     }
 
-    // Generate agent response
+    // Generate agent response with project context
+    console.log("🤖 Generating response for agent:", agent.name);
+    console.log("   Using topic:", projectTopic);
+    
+    // Load conversation history
     const allLogs = await loadDiscussionLogs(supabase, input.projectId);
     const conversationHistory = buildConversationHistory(allLogs, agentsById);
-
+    
     const agentResponse = await generateAgentResponse({
       agent,
       conversationHistory,
       rules,
+      projectTopic,
     });
+    
+    console.log("✅ Agent response generated");
+    console.log("   Response preview:", agentResponse.substring(0, 50) + "...");
 
-    // Save agent response
+    // Save agent response with project_id
+    console.log("💾 Saving agent response to discussion_logs");
     await saveDiscussionLog({
       supabase,
       projectId: input.projectId,
@@ -647,6 +672,7 @@ export const advanceDiscussion = async (
       turnIndex: nextTurnIndex,
       roundNumber: nextRound,
     });
+    console.log("✅ Agent response saved with project_id:", input.projectId);
 
     // Increment turn index
     nextTurnIndex += 1;

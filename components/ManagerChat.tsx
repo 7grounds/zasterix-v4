@@ -57,13 +57,45 @@ export default function ManagerChat() {
           console.log("   Participants:", data.participants?.length || 0);
           
           setProjectId(receivedProjectId);
-          setMessages(prev => [
-            ...prev.slice(0, -1), // Remove "Initializing..." message
-            { 
-              role: 'assistant', 
-              content: `Project initialized!\n\nProject UUID: ${receivedProjectId}\nTopic: ${data.project.topic_objective || data.project.name}\nParticipants: ${data.participants?.length || 0}\n\nReady to start discussion. Manager Alpha is standing by.` 
+          
+          // Load and display participants
+          try {
+            console.log("📝 Loading participant details...");
+            const participantsResponse = await fetch(`/api/discussions/${receivedProjectId}`);
+            const discussionData = await participantsResponse.json();
+            
+            let introMessage = `Project initialized!\n\nProject UUID: ${receivedProjectId}\nTopic: ${data.project.topic_objective || data.project.name}\nParticipants: ${data.participants?.length || 0}\n\n`;
+            
+            if (discussionData.status === 'success' && discussionData.speakerOrder) {
+              introMessage += '🎭 Discussion Participants:\n';
+              discussionData.speakerOrder.forEach((role: string, index: number) => {
+                const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+                introMessage += `${index + 1}. ${roleLabel}\n`;
+              });
+              introMessage += '\n';
             }
-          ]);
+            
+            introMessage += 'Ready to start discussion. Manager Alpha is standing by.\n\n';
+            introMessage += '💡 Type your message to begin the discussion.';
+            
+            setMessages(prev => [
+              ...prev.slice(0, -1), // Remove "Initializing..." message
+              { 
+                role: 'assistant', 
+                content: introMessage
+              }
+            ]);
+          } catch (err) {
+            console.warn("⚠️  Could not load participant details:", err);
+            // Fallback to basic message
+            setMessages(prev => [
+              ...prev.slice(0, -1),
+              { 
+                role: 'assistant', 
+                content: `Project initialized!\n\nProject UUID: ${receivedProjectId}\nTopic: ${data.project.topic_objective || data.project.name}\nParticipants: ${data.participants?.length || 0}\n\nReady to start discussion. Manager Alpha is standing by.` 
+              }
+            ]);
+          }
         } else {
           console.error("❌ Project initialization failed");
           console.error("   Error:", data.message);
@@ -87,6 +119,77 @@ export default function ManagerChat() {
     setMessages(prev => [...prev, { role: 'user', content: cmd }]);
     setInput('');
 
+    // Validate UUID format before allowing discussion
+    if (projectId) {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(projectId)) {
+        console.error("❌ Invalid project UUID format:", projectId);
+        setMessages(prev => [
+          ...prev, 
+          { role: 'assistant', content: 'Error: Invalid project UUID format. Please initialize a new project.' }
+        ]);
+        return;
+      }
+    }
+
+    // If we have a projectId, use the discussion API
+    if (projectId) {
+      console.log("📝 Sending message to discussion API");
+      console.log("   Project ID:", projectId);
+      console.log("   Message:", cmd);
+      
+      try {
+        setMessages(prev => [...prev, { role: 'assistant', content: '⏳ Processing...' }]);
+        
+        const response = await fetch(`/api/discussions/${projectId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: cmd,
+            userId: 'user-1', // TODO: Get from auth context
+            organizationId: null
+          })
+        });
+
+        const data = await response.json();
+        console.log("📥 Discussion API response:", data);
+
+        if (data.status === 'success') {
+          // Remove "Processing..." message and add actual responses
+          setMessages(prev => {
+            const withoutProcessing = prev.slice(0, -1);
+            const newEntries = data.entries || [];
+            
+            // Convert entries to messages
+            const newMessages = newEntries.slice(-3).map((entry: any) => ({
+              role: entry.speakerRole === 'user' ? 'user' : 'assistant',
+              content: `[${entry.speakerName}]: ${entry.content}`
+            }));
+            
+            return [...withoutProcessing, ...newMessages];
+          });
+
+          console.log("✅ Discussion updated");
+          console.log("   Next speaker:", data.nextSpeaker || 'None');
+        } else {
+          console.error("❌ Discussion API error:", data.message);
+          setMessages(prev => [
+            ...prev.slice(0, -1),
+            { role: 'assistant', content: `Error: ${data.message}` }
+          ]);
+        }
+        return;
+      } catch (err: any) {
+        console.error("❌ Failed to call discussion API:", err);
+        setMessages(prev => [
+          ...prev.slice(0, -1),
+          { role: 'assistant', content: `System Error: ${err.message}` }
+        ]);
+        return;
+      }
+    }
+
+    // Legacy flow for when projectId is not set
     let currentAgent = activeLeader;
 
     if (cmd.toLowerCase().includes('session') && !activeLeader) {
