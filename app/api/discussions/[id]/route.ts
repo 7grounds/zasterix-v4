@@ -2,10 +2,10 @@
  * @MODULE_ID app.api.discussions.id
  * @STAGE discussion
  * @DATA_INPUTS ["project_id", "message", "user_id", "organization_id"]
- * @REQUIRED_TOOLS ["core.discussion-engine"]
+ * @REQUIRED_TOOLS ["core.discussion-engine-v2"]
  */
 import { NextResponse } from "next/server";
-import { advanceDiscussion, getDiscussionState } from "@/core/discussion-engine";
+import { advanceDiscussion, getDiscussionState } from "@/core/discussion-engine-v2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
