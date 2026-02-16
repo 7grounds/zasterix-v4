@@ -545,7 +545,6 @@ export const advanceDiscussion = async (
     throw new Error("Discussion is already completed.");
   }
 
-  const logs = await loadDiscussionLogs(supabase, input.projectId);
   const rules = resolveRules(project.metadata);
 
   // Load all agents (filter out user participants which have null agent_id)
