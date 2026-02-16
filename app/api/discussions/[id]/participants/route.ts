@@ -66,16 +66,16 @@ export async function GET(_req: Request, context: RouteContext) {
         discipline: string | null;
         category: string | null;
         level: number | null;
-      } | null;
+      }[] | null;
     }) => ({
       id: p.id,
       role: p.role,
       sequence_order: p.sequence_order,
       agent_id: p.agent_id,
-      name: p.agent_templates?.name || "User",
-      discipline: p.agent_templates?.discipline || "N/A",
-      category: p.agent_templates?.category || "N/A",
-      level: p.agent_templates?.level || 0,
+      name: p.agent_templates?.[0]?.name || "User",
+      discipline: p.agent_templates?.[0]?.discipline || "N/A",
+      category: p.agent_templates?.[0]?.category || "N/A",
+      level: p.agent_templates?.[0]?.level || 0,
     }));
 
     return NextResponse.json({
