@@ -2,16 +2,22 @@
 CREATE TABLE IF NOT EXISTS public.discussion_participants (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
-    agent_id uuid NOT NULL REFERENCES public.agent_templates(id) ON DELETE CASCADE,
+    agent_id uuid REFERENCES public.agent_templates(id) ON DELETE CASCADE,
     role text NOT NULL CHECK (role IN ('manager', 'leader', 'user', 'specialist')),
     sequence_order integer NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE(project_id, agent_id),
-    UNIQUE(project_id, sequence_order)
+    UNIQUE(project_id, sequence_order),
+    CONSTRAINT check_agent_or_user CHECK (
+        (role = 'user' AND agent_id IS NULL) OR
+        (role != 'user' AND agent_id IS NOT NULL)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_discussion_participants_project
 ON public.discussion_participants (project_id, sequence_order);
+
+CREATE INDEX IF NOT EXISTS idx_discussion_participants_agent
+ON public.discussion_participants (agent_id) WHERE agent_id IS NOT NULL;
 
 -- Create discussion_state table
 CREATE TABLE IF NOT EXISTS public.discussion_state (

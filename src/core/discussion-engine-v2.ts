@@ -478,8 +478,12 @@ export const getDiscussionState = async (projectId: string): Promise<DiscussionS
   const state = await loadOrCreateDiscussionState(supabase, projectId);
   const logs = await loadDiscussionLogs(supabase, projectId);
 
-  // Load all agents
-  const agentIds = new Set(participants.map((p) => p.agent_id).filter((id) => id !== "user"));
+  // Load all agents (filter out user participants which have null agent_id)
+  const agentIds = new Set(
+    participants
+      .map((p) => p.agent_id)
+      .filter((id): id is string => id !== null)
+  );
   const agentsById = new Map<string, DiscussionAgent>();
   
   for (const agentId of agentIds) {
@@ -541,8 +545,12 @@ export const advanceDiscussion = async (
   const logs = await loadDiscussionLogs(supabase, input.projectId);
   const rules = resolveRules(project.metadata);
 
-  // Load all agents
-  const agentIds = new Set(participants.map((p) => p.agent_id).filter((id) => id !== "user"));
+  // Load all agents (filter out user participants which have null agent_id)
+  const agentIds = new Set(
+    participants
+      .map((p) => p.agent_id)
+      .filter((id): id is string => id !== null)
+  );
   const agentsById = new Map<string, DiscussionAgent>();
   
   for (const agentId of agentIds) {
@@ -608,7 +616,7 @@ export const advanceDiscussion = async (
     }
 
     // Get the agent for this turn
-    const agent = agentsById.get(currentParticipant.agent_id);
+    const agent = currentParticipant.agent_id ? agentsById.get(currentParticipant.agent_id) : null;
     if (!agent) {
       // Skip if agent not found
       nextTurnIndex += 1;

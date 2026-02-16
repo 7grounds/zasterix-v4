@@ -55,15 +55,7 @@ BEGIN
 
     -- Add user as a participant
     INSERT INTO public.discussion_participants (project_id, agent_id, role, sequence_order)
-    SELECT 
-        discussion_project_id,
-        (SELECT id FROM public.agent_templates WHERE name = 'Manager L3' LIMIT 1), -- Placeholder, will be overridden
-        'user',
-        4
-    WHERE NOT EXISTS (
-        SELECT 1 FROM public.discussion_participants
-        WHERE project_id = discussion_project_id AND role = 'user'
-    )
+    VALUES (discussion_project_id, NULL, 'user', 4)
     ON CONFLICT (project_id, sequence_order) DO NOTHING;
 
     -- Initialize discussion state if not exists

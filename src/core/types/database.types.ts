@@ -213,7 +213,7 @@ export interface Database {
         Row: {
           id: string;
           project_id: string;
-          agent_id: string;
+          agent_id: string | null;
           role: string;
           sequence_order: number;
           created_at: string;
@@ -221,7 +221,7 @@ export interface Database {
         Insert: {
           id?: string;
           project_id: string;
-          agent_id: string;
+          agent_id?: string | null;
           role: string;
           sequence_order: number;
           created_at?: string;
@@ -229,7 +229,7 @@ export interface Database {
         Update: {
           id?: string;
           project_id?: string;
-          agent_id?: string;
+          agent_id?: string | null;
           role?: string;
           sequence_order?: number;
           created_at?: string;
