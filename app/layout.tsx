@@ -4,8 +4,8 @@ import { Inter } from 'next/font/google'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: 'Origo V4 | Command Center',
-  description: 'Zentrales KI-Betriebssystem',
+  title: 'Zasterix v4 | Manager Chat',
+  description: 'AI-Driven Wealth Engineering',
 }
 
 export default function RootLayout({
