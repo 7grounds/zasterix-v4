@@ -209,6 +209,137 @@ export interface Database {
         };
         Relationships: [];
       };
+      discussion_participants: {
+        Row: {
+          id: string;
+          project_id: string;
+          agent_id: string;
+          role: string;
+          sequence_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          agent_id: string;
+          role: string;
+          sequence_order: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          agent_id?: string;
+          role?: string;
+          sequence_order?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "discussion_participants_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "discussion_participants_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_templates";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      discussion_state: {
+        Row: {
+          id: string;
+          project_id: string;
+          current_turn_index: number;
+          current_round: number;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          current_turn_index?: number;
+          current_round?: number;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          current_turn_index?: number;
+          current_round?: number;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "discussion_state_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: true;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      discussion_logs: {
+        Row: {
+          id: string;
+          project_id: string;
+          agent_id: string | null;
+          role: string;
+          content: string;
+          turn_index: number;
+          round_number: number;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          agent_id?: string | null;
+          role: string;
+          content: string;
+          turn_index: number;
+          round_number: number;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          agent_id?: string | null;
+          role?: string;
+          content?: string;
+          turn_index?: number;
+          round_number?: number;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "discussion_logs_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "discussion_logs_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_templates";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       search_logs: {
         Row: {
           id: string;
