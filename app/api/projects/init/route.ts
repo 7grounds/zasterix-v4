@@ -94,7 +94,7 @@ export async function POST(req: Request) {
         project_id: projectId,
         current_turn_index: 0,
         current_round: 1,
-        status: "active"
+        is_active: true
       });
 
     if (stateError) {
