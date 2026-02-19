@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, isSupabaseConfigured } from "./supabase";
 
 export const requestMagicLink = async (email: string) => {
   return supabase.auth.signInWithOtp({
@@ -10,5 +10,8 @@ export const requestMagicLink = async (email: string) => {
 };
 
 export const getSession = async () => {
-  return supabase.auth.getSession();
+  if (!isSupabaseConfigured) {
+    return { data: { user: null }, error: new Error("Supabase is not configured.") };
+  }
+  return supabase.auth.getUser();
 };
