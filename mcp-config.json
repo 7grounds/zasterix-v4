@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=idsifdlczfhhabqaytma",
+      "description": "Supabase MCP server for Zasterix database access",
+      "capabilities": [
+        "Database schema introspection",
+        "Table and column information",
+        "Migration analysis",
+        "Data structure queries"
+      ]
+    }
+  },
+  "version": "1.0.0",
+  "project": "zasterix-v4"
+}

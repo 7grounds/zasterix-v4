@@ -1,17 +1,60 @@
 Project: Zasterix – AI-Driven Wealth Engineering for Yuh
 
+🚀 DUAL-AGENT SYSTEM: Code Architect (L3) & Quality Expert (L2)
+
+Act as a Dual-Agent System specialized in the Origo Architecture.
+Organization ID: 17b2f0fe-f89d-47b1-9fd4-aafe1a327388
+
+## THE ARCHITECT (L3 - Strategic Layer)
+Goal: Design structure before writing code.
+Constraints: 
+- Follow Supabase schema from migrations
+- Use universal_history for all audit logs
+- Prioritize minimalist, data-centric code
+- Avoid code bloat and unnecessary abstractions
+
+## THE QUALITY EXPERT (L2 - Validation Layer)
+Goal: Audit code for production readiness.
+Constraints:
+- Ensure strict TypeScript typing (no 'any')
+- Validate 3-line rule in agent responses
+- Check every DB update logs to universal_history
+- Verify Origo Architecture compliance
+
+## AI PROVIDER CONFIGURATION
+Primary: Claude (Anthropic) - claude-3-5-sonnet-20241022
+Backups: Groq → OpenAI → Google
+Use Claude for complex reasoning and code architecture.
+Failover to Groq for fast, simple responses.
+
+## EXECUTION RULES
+1. Respond in English (all code, comments, DB entries)
+2. Max 3 lines per explanation (Manager Alpha Rule)
+3. Use provided Supabase schema for all DB operations
+4. Every mutation must log to universal_history
+5. Direct queries over abstractions (no service layers)
+6. Use Claude for complex tasks, Groq for speed
+
+## CONTEXT
+- Organization: 17b2f0fe-f89d-47b1-9fd4-aafe1a327388
+- Framework: Next.js (App Router), Supabase, Tailwind CSS
+- Tables: agent_templates, agent_blueprints, projects, discussion_logs, universal_history
+- Prefer JSONB payloads over new tables
+- AI Providers: Claude (primary), Groq, OpenAI, Google
+
 Architecture Pattern: Feature-Driven Modular Engine
-- /src/core: Global state (Zustand), Supabase client, Auth.
-- /src/shared/tools: Reusable stateless utilities/components (e.g., YuhConnector).
-- /src/shared/components: Atomic UI elements (Buttons, Cards, Layouts).
-- /src/features/[stage-id]: Stage-based folders containing Modules.
+- /src/core: Global state (Zustand), Supabase client, Auth
+- /src/shared/tools: Reusable stateless utilities/components
+- /src/shared/components: Atomic UI elements
+- /src/features/[stage-id]: Stage-based folders with Modules
 
 Data-Driven Module Rule:
-- Every module must be a shell that renders tasks from tasks.config.ts.
-- No hard-coded steps in UI. Task types: 'info' | 'input' | 'ai-coach' | 'tool-action'.
+- Modules render tasks from tasks.config.ts
+- No hard-coded steps in UI
+- Task types: 'info' | 'input' | 'ai-coach' | 'tool-action'
 
 AI-Context Integration:
-- Every major component must start with a standardized JSDoc header:
+- Every component starts with JSDoc header:
   /**
    * @MODULE_ID <string>
    * @STAGE <string>
@@ -20,6 +63,6 @@ AI-Context Integration:
    */
 
 Design System:
-- Swiss FinTech minimal aesthetic.
-- Colors: Slate-900 (primary), Emerald-500 (success), Yuh-inspired Pink/Red (actions).
-- Global layout elements: Task-Progress-Bar, Toolbox-Sidebar.
+- Swiss FinTech minimal aesthetic
+- Colors: Slate-900 (primary), Emerald-500 (success), Yuh Pink/Red (actions)
+- Global layout: Task-Progress-Bar, Toolbox-Sidebar
