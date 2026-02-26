@@ -3,6 +3,38 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 <!-- redeploy trigger -->
 <!-- redeploy trigger 2 -->
 
+## Tech Stack
+
+- **Frontend**: Next.js 14 with React 18
+- **Styling**: Tailwind CSS 4
+- **Database**: Supabase (PostgreSQL) - See [DATABASE.md](./DATABASE.md) for details
+- **AI/LLM**: Groq (Llama 3.1), OpenAI
+- **Type Safety**: TypeScript 5
+
+## Database
+
+**Zasterix uses Supabase** - a PostgreSQL-based platform with built-in features for authentication, real-time subscriptions, and Row Level Security (RLS).
+
+For comprehensive database documentation, see **[DATABASE.md](./DATABASE.md)** which includes:
+- Schema overview and table descriptions
+- Migration management
+- Query examples
+- RLS policies
+- Performance considerations
+- Troubleshooting guide
+
+### Quick Database Setup
+
+```bash
+# Set environment variables
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# Apply migrations
+supabase db push
+```
+
 ## Getting Started
 
 First, run the development server:
