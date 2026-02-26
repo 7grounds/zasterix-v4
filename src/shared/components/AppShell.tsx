@@ -25,9 +25,7 @@ export const AppShell = ({ children }: AppShellProps) => {
                 AI-Driven Wealth Engineering
               </h1>
             </div>
-            <div className="text-right text-xs uppercase tracking-[0.3em] text-slate-400">
-              Yuh Edition
-            </div>
+
           </div>
           <TaskProgressBar />
         </header>

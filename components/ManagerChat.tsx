@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
-export default function ManagerChat() {
+export default function ManagerChat({ onLogout }: { onLogout?: () => void }) {
   const [messages, setMessages] = useState<any[]>([
     { role: 'assistant', content: 'Manager Alpha online. xAI/Grok cluster active.' }
   ]);
@@ -85,6 +85,14 @@ export default function ManagerChat() {
             {activeLeader ? `${(activeLeader as any).name} | ROUND ${round}/3` : 'MANAGER_ALPHA_READY'}
           </span>
         </div>
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            Logout
+          </button>
+        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-10 md:p-16 space-y-12 bg-[radial-gradient(#f1f5f9_1px,transparent_1px)] [background-size:40px_40px]">
