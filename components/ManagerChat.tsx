@@ -77,8 +77,8 @@ export default function ManagerChat() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white">
-      <div className="px-10 py-6 border-b border-slate-100 flex justify-between bg-white/90 backdrop-blur-md sticky top-0 z-50">
+    <div className="flex flex-col h-full bg-white">
+      <div className="px-10 py-6 border-b border-slate-100 flex justify-between bg-white/90 backdrop-blur-md">
         <div className="flex items-center space-x-4">
           <div className={`h-3 w-3 rounded-full ${activeLeader ? 'bg-orange-600 animate-pulse' : 'bg-green-500'}`}></div>
           <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">
